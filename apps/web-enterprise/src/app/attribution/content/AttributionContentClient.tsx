@@ -206,9 +206,6 @@ export default function AttributionContentClient() {
     if (appliedFilters.cityId !== "all") {
       params.id_city = appliedFilters.cityId
     }
-    if (appliedFilters.platform !== "all") {
-      params.platform = appliedFilters.platform
-    }
     if (appliedFilters.channel !== "all") {
       params.channel = appliedFilters.channel
     }

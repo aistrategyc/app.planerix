@@ -1,28 +1,27 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, desc, text, or_
+from sqlalchemy import select, and_, func, desc, or_
 from sqlalchemy.orm import selectinload
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 
-from liderix_api.models.kpi import KPIIndicator, KPIMeasurement, MetricBinding
-# Import for backward compatibility
-KPI = KPIIndicator
+from liderix_api.models.kpi import KPIIndicator, KPIMeasurement
 from liderix_api.schemas.kpis import (
     KPICreate, KPIUpdate, KPIRead, KPIListResponse,
     KPIMeasurementCreate, KPIMeasurementUpdate, KPIMeasurementRead,
-    KPIDashboard, KPIAnalytics, KPITrendData,
-    KPIBulkUpdateRequest, KPIBulkMeasurementRequest,
-    # Enums
-    KPIStatus, KPIType, KPIPeriod, KPISourceType, KPIAggregation,
+    KPIDashboard, KPITrendData,
+    KPIBulkUpdateRequest, KPIStatus, KPIType, KPIPeriod, KPISourceType, KPIAggregation,
     # Legacy schemas for backward compatibility
-    KPICreateLegacy, KPIUpdateLegacy, KPIReadLegacy
+    KPICreateLegacy, KPIReadLegacy
 )
 from liderix_api.db import get_async_session
 from liderix_api.services.auth import get_current_user
 from liderix_api.models.users import User
 from liderix_api.services.permissions import check_organization_access
+
+# Backward compatibility: many call sites still use `KPI`.
+KPI = KPIIndicator
 
 router = APIRouter(prefix="", tags=["KPIs & Performance Metrics"])
 

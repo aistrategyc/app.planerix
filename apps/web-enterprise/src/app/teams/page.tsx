@@ -17,20 +17,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { MembershipRole, RoleLabels } from "@/types/roles"
 import { getTeams, createTeam, inviteTeamMember, Team as ApiTeam, TeamMember as ApiTeamMember } from "@/lib/api/teams"
 
-import {
-  Plus,
-  Search,
-  Users,
-  User,
-  Shield,
-  Crown,
-  Mail,
-  Activity,
-  BarChart3,
-  Target,
-  Award,
-  Settings
-} from "lucide-react"
+import { Plus, Search, Users, User, Shield, Crown, Mail, Activity, BarChart3, Target, Award, Settings } from "lucide-react"
 
 interface TeamMember {
   id: string

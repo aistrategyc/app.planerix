@@ -1,7 +1,6 @@
 from __future__ import annotations
 import re
 from uuid import uuid4
-from datetime import datetime
 from sqlalchemy import (
     Column,
     String,
@@ -15,7 +14,6 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
     CheckConstraint)
-from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
 from liderix_api.db import Base

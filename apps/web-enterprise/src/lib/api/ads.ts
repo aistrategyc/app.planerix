@@ -3,6 +3,8 @@
  *
  * Provides type-safe interfaces for fetching real advertising and campaign data
  * from the ITstep analytics database via the backend API.
+ *
+ * @deprecated This file is currently unused by the UI. Prefer `/api/analytics/widgets/*`-based screens.
  */
 
 import { api } from './config'

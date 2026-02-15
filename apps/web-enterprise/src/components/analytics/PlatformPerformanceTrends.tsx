@@ -7,18 +7,10 @@
 
 import React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts"
 import { TrendingUp } from "lucide-react"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipStyle, chartTooltipItemStyle } from "@/components/analytics/chart-theme"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 interface TrendDataPoint {
   dt: string
@@ -149,7 +141,7 @@ export function PlatformPerformanceTrends({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={320}>
+        <SafeResponsiveContainer width="100%" height={320}>
           <LineChart data={chartData}>
             <CartesianGrid {...chartGridProps} />
             <XAxis
@@ -176,7 +168,7 @@ export function PlatformPerformanceTrends({
               />
             ))}
           </LineChart>
-        </ResponsiveContainer>
+        </SafeResponsiveContainer>
 
         {/* Summary Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t">

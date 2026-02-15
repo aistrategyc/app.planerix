@@ -2,9 +2,7 @@
 from fastapi import APIRouter, Depends, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from uuid import uuid4
 from datetime import timedelta
-from typing import Optional
 import secrets as _secrets
 import resend
 from redis.exceptions import ConnectionError as RedisConnectionError

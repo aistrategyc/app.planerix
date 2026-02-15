@@ -5,16 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  AnalyticsAPI,
-  DateRange,
-  DashboardOverview,
-  RealTimeMetrics,
-  CampaignPerformance,
-  CreativePerformance,
-  CreativeBurnout,
-  AnalyticsFilters
-} from '@/lib/api/analytics'
+import { AnalyticsAPI, DateRange, DashboardOverview, RealTimeMetrics, CampaignPerformance, CreativePerformance, CreativeBurnout, AnalyticsFilters } from '@/lib/api/analytics'
 
 // Request management constants
 const DEFAULT_RETRY_DELAY = 1000 // 1 second

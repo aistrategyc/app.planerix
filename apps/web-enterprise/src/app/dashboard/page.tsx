@@ -15,21 +15,7 @@ import { OKRsAPI, type OKR } from "@/lib/api/okr"
 import { CalendarAPI, type CalendarEvent } from "@/lib/api/calendar"
 import { getNotifications, type NotificationItem } from "@/lib/api/notifications"
 import { PageHeader } from "@/components/layout/PageHeader";
-import {
-  BarChart3,
-  Target,
-  Users,
-  Brain,
-  Bell,
-  Calendar,
-  CheckSquare,
-  FolderOpen,
-  Plus,
-  FileText,
-  Settings,
-  ArrowUpRight,
-  ChevronRight
-} from "lucide-react";
+import { BarChart3, Target, Users, Brain, Bell, Calendar, CheckSquare, FolderOpen, Plus, FileText, ArrowUpRight, ChevronRight } from "lucide-react";
 
 function DashboardHomeContentContent() {
   const router = useRouter();
@@ -189,19 +175,6 @@ function DashboardHomeContentContent() {
       active = false;
     };
   }, [orgId, user]);
-
-  const handleOpenSettings = async () => {
-    try {
-      const company = await CompanyAPI.getCurrentCompany();
-      if (company?.id) {
-        router.push(`/organization/${company.id}/settings`);
-        return;
-      }
-    } catch {
-      // ignore
-    }
-    router.push("/organization");
-  };
 
   const displayName = user?.full_name || user?.email || "друг";
   const displayFirstName = displayName.split(" ")[0].split("@")[0];

@@ -11,7 +11,7 @@ from fastapi import (
     Query, BackgroundTasks
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func, and_, or_, delete
+from sqlalchemy import select, func, and_, or_, delete
 from sqlalchemy.orm import lazyload, selectinload
 from sqlalchemy.exc import IntegrityError
 from enum import Enum
@@ -26,7 +26,7 @@ from liderix_api.models.memberships import Membership, MembershipStatus
 from liderix_api.models.okrs import Objective
 from liderix_api.config.settings import settings
 from liderix_api.schemas.projects import (
-    ProjectRead, ProjectCreate, ProjectUpdate, ProjectListResponse,
+    ProjectCreate, ProjectUpdate, ProjectListResponse,
     ProjectDetailResponse, ProjectMemberAdd, ProjectStatsResponse,
     ProjectStatusUpdate, ProjectMemberResponse, ProjectHealthResponse
 )
@@ -120,7 +120,7 @@ async def _validate_project_members(session: AsyncSession, org_id: Optional[UUID
             and_(
                 User.id.in_(user_ids),
                 User.deleted_at.is_(None),
-                User.is_active == True
+                User.is_active.is_(True)
             )
         )
     )
@@ -393,7 +393,7 @@ async def list_projects(
         access_filters.append(
             and_(
                 Project.org_id.in_(user_org_ids),
-                Project.is_public == True
+                Project.is_public.is_(True)
             )
         )
 

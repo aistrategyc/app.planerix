@@ -2,15 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AttributionFilterBar } from "@/app/attribution/components/AttributionFilterBar"
 import { useAttributionFilters } from "@/app/attribution/hooks/useAttributionFilters"
@@ -35,6 +27,7 @@ const OVERVIEW_WIDGET_KEYS = [
   "attr.overview.ts_core",
   "attr.overview.channel_mix",
   "attr.overview.coverage",
+  "attr.overview.health_chain",
 ]
 
 type AttributionKpiRow = {
@@ -80,6 +73,17 @@ type CoverageRow = {
   paid_gads_contracts?: number | null
 }
 
+type HealthRow = {
+  date_key?: string | null
+  id_city?: number | null
+  health_status?: string | null
+  alerts?: string[] | string | null
+  click_to_request_rate?: number | null
+  request_to_lead_rate?: number | null
+  lead_to_contract_rate?: number | null
+  contract_gclid_coverage_rate?: number | null
+}
+
 type AttributionWidgetsPayload = {
   widgets: Record<string, { data: { current: any[]; compare?: any[] }; meta: { missing_view?: boolean } }>
 }
@@ -95,6 +99,23 @@ const toNumber = (value: unknown) => {
 
 const buildSparkline = (rows: AttributionTrendRow[], key: keyof AttributionTrendRow) =>
   rows.map((row) => ({ value: toNumber(row[key]) }))
+
+const parseAlerts = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.map((entry) => String(entry)).filter(Boolean)
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!trimmed) return []
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      return trimmed
+        .slice(1, -1)
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    }
+    return [trimmed]
+  }
+  return []
+}
 
 export default function AttributionOverviewClient() {
   const searchParams = useSearchParams()
@@ -188,9 +209,6 @@ export default function AttributionOverviewClient() {
     if (appliedFilters.cityId !== "all") {
       params.id_city = appliedFilters.cityId
     }
-    if (appliedFilters.platform !== "all") {
-      params.platform = appliedFilters.platform
-    }
     if (appliedFilters.channel !== "all") {
       params.channel = appliedFilters.channel
     }
@@ -241,11 +259,15 @@ export default function AttributionOverviewClient() {
   const coverageWidget = data.widgets["attr.overview.coverage"] as
     | { data: { current: CoverageRow[] }; meta: { missing_view?: boolean } }
     | undefined
+  const healthWidget = data.widgets["attr.overview.health_chain"] as
+    | { data: { current: HealthRow[] }; meta: { missing_view?: boolean } }
+    | undefined
 
   const kpiRow = kpiWidget?.data?.current?.[0]
   const trendRows = trendWidget?.meta?.missing_view ? [] : trendWidget?.data?.current ?? []
   const channelRows = channelWidget?.data?.current ?? []
   const coverageRows = coverageWidget?.data?.current ?? []
+  const healthRows = healthWidget?.data?.current ?? []
 
   const spendSparkline = buildSparkline(trendRows, "spend")
   const clickSparkline = buildSparkline(trendRows, "clicks")
@@ -298,6 +320,18 @@ export default function AttributionOverviewClient() {
     contracts: coverageTotals.contracts > 0 ? coverageTotals.contractsWithGclid / coverageTotals.contracts : null,
     paidShare: coverageTotals.contracts > 0 ? coverageTotals.paidGadsContracts / coverageTotals.contracts : null,
   }
+
+  const latestHealth = [...healthRows]
+    .filter((row) => row.date_key)
+    .sort((a, b) => ((a.date_key ?? "") > (b.date_key ?? "") ? -1 : 1))[0]
+  const latestAlerts = parseAlerts(latestHealth?.alerts)
+  const healthStatusLabel = latestHealth?.health_status ? latestHealth.health_status.toUpperCase() : "UNKNOWN"
+  const healthStatusTone =
+    healthStatusLabel === "OK"
+      ? "border-emerald-200 text-emerald-700"
+      : healthStatusLabel === "WARNING"
+        ? "border-amber-200 text-amber-700"
+        : "border-red-200 text-red-700"
 
   const renderMetric = (label: string, value: string, sparkline: { value: number | null }[], tone = "#3b82f6") => (
     <Card>
@@ -405,6 +439,56 @@ export default function AttributionOverviewClient() {
 
       <Card>
         <CardHeader className="pb-3">
+          <CardTitle>Attribution chain health</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {healthWidget?.meta?.missing_view ? (
+            <WidgetStatus
+              title="Витрина health-chain не найдена"
+              description="Нужно зарегистрировать attr.overview.health_chain и view sem_ui.attribution_chain_health_daily_city."
+            />
+          ) : healthRows.length === 0 && !isLoading ? (
+            <div className="text-sm text-muted-foreground">Нет данных health-chain для выбранного периода.</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className={healthStatusTone}>
+                  {healthStatusLabel}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {latestHealth?.date_key ?? "No date"}
+                </span>
+                {latestAlerts.length > 0 && latestAlerts.slice(0, 4).map((alert) => (
+                  <Badge key={alert} variant="outline" className="text-[11px]">
+                    {alert.replaceAll("_", " ")}
+                  </Badge>
+                ))}
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs text-muted-foreground">Click → Request</div>
+                  <div className="text-lg font-semibold">{formatPercent(toNumber(latestHealth?.click_to_request_rate), 1)}</div>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs text-muted-foreground">Request → Lead</div>
+                  <div className="text-lg font-semibold">{formatPercent(toNumber(latestHealth?.request_to_lead_rate), 1)}</div>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs text-muted-foreground">Lead → Contract</div>
+                  <div className="text-lg font-semibold">{formatPercent(toNumber(latestHealth?.lead_to_contract_rate), 1)}</div>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs text-muted-foreground">Contract GCLID coverage</div>
+                  <div className="text-lg font-semibold">{formatPercent(toNumber(latestHealth?.contract_gclid_coverage_rate), 1)}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
           <CardTitle>Performance over time</CardTitle>
         </CardHeader>
         <CardContent>
@@ -431,16 +515,19 @@ export default function AttributionOverviewClient() {
                     orientation="right"
                     {...chartAxisProps}
                   />
-                  <Tooltip
-                    contentStyle={chartTooltipStyle}
-                    itemStyle={chartTooltipItemStyle}
-                    formatter={(value: number, name: string) => {
-                      if (name === "spend") return [formatCurrency(value), "Spend"]
-                      if (name === "platform_leads") return [formatNumber(value), "Platform leads"]
-                      if (name === "crm_requests_cnt") return [formatNumber(value), "CRM leads"]
-                      return [formatNumber(value), name]
-                    }}
-                  />
+	                  <Tooltip
+	                    contentStyle={chartTooltipStyle}
+	                    itemStyle={chartTooltipItemStyle}
+	                    formatter={(value, name) => {
+	                      const label = String(name)
+	                      if (value === null || value === undefined) return ["—", label]
+	                      const numeric = typeof value === "number" ? value : Number(value)
+	                      if (label === "spend") return [formatCurrency(numeric), "Spend"]
+	                      if (label === "platform_leads") return [formatNumber(numeric), "Platform leads"]
+	                      if (label === "crm_requests_cnt") return [formatNumber(numeric), "CRM leads"]
+	                      return [formatNumber(numeric), label]
+	                    }}
+	                  />
                   <Area
                     type="monotone"
                     dataKey="spend"

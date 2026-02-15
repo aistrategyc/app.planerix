@@ -14,31 +14,9 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { AnalyticsEmptyState } from "@/components/analytics/AnalyticsEmptyState"
-import {
-  getContacts,
-  getDeals,
-  createContact,
-  CRMContact,
-  CRMDeal,
-} from "@/lib/api/crm"
+import { getContacts, getDeals, createContact, CRMContact, CRMDeal } from "@/lib/api/crm"
 
-import {
-  Plus,
-  Search,
-  Users,
-  Building2,
-  Phone,
-  Mail,
-  Calendar,
-  DollarSign,
-  CheckCircle2,
-  Edit3,
-  UserPlus,
-  Briefcase,
-  Target,
-  Activity,
-  Trophy
-} from "lucide-react"
+import { Plus, Search, Users, Building2, Phone, Mail, Calendar, DollarSign, CheckCircle2, Edit3, UserPlus, Briefcase, Target, Activity, Trophy } from "lucide-react"
 
 interface Contact {
   id: string
@@ -95,15 +73,27 @@ function CRMPageContent() {
   const [loading, setLoading] = useState(true)
   const hasActiveFilters = Boolean(searchQuery) || filterStatus !== "all" || filterPriority !== "all"
 
-  const [newContact, setNewContact] = useState({
+  type NewContactDraft = {
+    name: string
+    email: string
+    phone: string
+    company: string
+    position: string
+    status: Contact["status"]
+    priority: Contact["priority"]
+    source: Contact["source"]
+    notes: string
+  }
+
+  const [newContact, setNewContact] = useState<NewContactDraft>({
     name: "",
     email: "",
     phone: "",
     company: "",
     position: "",
-    status: "lead" as const,
-    priority: "medium" as const,
-    source: "website" as const,
+    status: "lead",
+    priority: "medium",
+    source: "website",
     notes: ""
   })
 
@@ -365,8 +355,8 @@ function CRMPageContent() {
                     <Label htmlFor="status">Status</Label>
                     <Select
                       value={newContact.status}
-                      onValueChange={(value: Contact["status"]) =>
-                        setNewContact({ ...newContact, status: value })
+                      onValueChange={(value) =>
+                        setNewContact({ ...newContact, status: value as Contact["status"] })
                       }
                     >
                       <SelectTrigger>
@@ -385,8 +375,8 @@ function CRMPageContent() {
                     <Label htmlFor="priority">Priority</Label>
                     <Select
                       value={newContact.priority}
-                      onValueChange={(value: Contact["priority"]) =>
-                        setNewContact({ ...newContact, priority: value })
+                      onValueChange={(value) =>
+                        setNewContact({ ...newContact, priority: value as Contact["priority"] })
                       }
                     >
                       <SelectTrigger>
@@ -404,8 +394,8 @@ function CRMPageContent() {
                     <Label htmlFor="source">Source</Label>
                     <Select
                       value={newContact.source}
-                      onValueChange={(value: Contact["source"]) =>
-                        setNewContact({ ...newContact, source: value })
+                      onValueChange={(value) =>
+                        setNewContact({ ...newContact, source: value as Contact["source"] })
                       }
                     >
                       <SelectTrigger>
@@ -511,7 +501,7 @@ function CRMPageContent() {
       </div>
 
       {/* Main Content */}
-      <Tabs value={activeTab} onValueChange={(v: "contacts" | "deals") => setActiveTab(v)}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "contacts" | "deals")}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="contacts">
             <Users className="w-4 h-4 mr-2" />

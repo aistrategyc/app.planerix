@@ -2,16 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import {
-  Area,
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { Area, Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 import { ExternalLink } from "lucide-react"
 
 import { AttributionFilterBar } from "@/app/attribution/components/AttributionFilterBar"
@@ -41,6 +32,7 @@ const WIDGET_KEYS = {
   topCampaigns: "attr.revenue.top_campaigns_daily",
   metaAds: "attr.revenue.meta_ads_daily",
   gadsCampaigns: "attr.revenue.gads_campaigns_daily",
+  health: "attr.revenue.health_chain",
   detail: "attr.revenue.attributed_detail",
 }
 
@@ -112,6 +104,16 @@ type AttributedDetailRow = {
   payments_sum?: number | null
 }
 
+type HealthRow = {
+  date_key?: string | null
+  health_status?: string | null
+  alerts?: string[] | string | null
+  click_to_request_rate?: number | null
+  request_to_lead_rate?: number | null
+  lead_to_contract_rate?: number | null
+  contract_gclid_coverage_rate?: number | null
+}
+
 type AttributionWidgetsPayload = {
   widgets: Record<string, { data: { current: any[] }; meta: { missing_view?: boolean } }>
 }
@@ -144,6 +146,23 @@ const buildDailySeries = (rows: ContractsDailyRow[]) => {
   return [...map.entries()]
     .sort((a, b) => (a[0] > b[0] ? 1 : -1))
     .map(([date, metrics]) => ({ date, ...metrics }))
+}
+
+const parseAlerts = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.map((entry) => String(entry)).filter(Boolean)
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!trimmed) return []
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      return trimmed
+        .slice(1, -1)
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    }
+    return [trimmed]
+  }
+  return []
 }
 
 export default function AttributionRevenueClient() {
@@ -239,9 +258,6 @@ export default function AttributionRevenueClient() {
     if (appliedFilters.cityId !== "all") {
       params.id_city = appliedFilters.cityId
     }
-    if (appliedFilters.platform !== "all") {
-      params.platform = appliedFilters.platform
-    }
     if (appliedFilters.channel !== "all") {
       params.channel = appliedFilters.channel
     }
@@ -298,6 +314,9 @@ export default function AttributionRevenueClient() {
   const gadsWidget = data.widgets[WIDGET_KEYS.gadsCampaigns] as
     | { data: { current: CampaignRow[] }; meta: { missing_view?: boolean } }
     | undefined
+  const healthWidget = data.widgets[WIDGET_KEYS.health] as
+    | { data: { current: HealthRow[] }; meta: { missing_view?: boolean } }
+    | undefined
   const detailWidget = data.widgets[WIDGET_KEYS.detail] as
     | { data: { current: AttributedDetailRow[] }; meta: { missing_view?: boolean } }
     | undefined
@@ -308,6 +327,7 @@ export default function AttributionRevenueClient() {
   const campaignRows = campaignsWidget?.data?.current ?? []
   const metaAdRows = metaAdsWidget?.data?.current ?? []
   const gadsCampaignRows = gadsWidget?.data?.current ?? []
+  const healthRows = healthWidget?.data?.current ?? []
   const detailRows = detailWidget?.data?.current ?? []
 
   const totalContracts = sumByKey(kpiRows, "contracts_cnt")
@@ -334,6 +354,18 @@ export default function AttributionRevenueClient() {
   const topCampaigns = [...campaignRows]
     .sort((a, b) => (toNumber(b.revenue_total_cost) ?? 0) - (toNumber(a.revenue_total_cost) ?? 0))
     .slice(0, 10)
+
+  const latestHealth = [...healthRows]
+    .filter((row) => row.date_key)
+    .sort((a, b) => ((a.date_key ?? "") > (b.date_key ?? "") ? -1 : 1))[0]
+  const latestAlerts = parseAlerts(latestHealth?.alerts)
+  const healthStatusLabel = latestHealth?.health_status ? latestHealth.health_status.toUpperCase() : "UNKNOWN"
+  const healthStatusTone =
+    healthStatusLabel === "OK"
+      ? "border-emerald-200 text-emerald-700"
+      : healthStatusLabel === "WARNING"
+        ? "border-amber-200 text-amber-700"
+        : "border-red-200 text-red-700"
 
   const metaAds = useMemo(() => {
     const map = new Map<string, MetaAdRow & { contracts: number; revenue: number; payments: number }>()
@@ -412,6 +444,54 @@ export default function AttributionRevenueClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle>Attribution chain health</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {healthWidget?.meta?.missing_view ? (
+            <WidgetStatus
+              title="Витрина health-chain не найдена"
+              description="Нужно зарегистрировать attr.revenue.health_chain и view sem_ui.attribution_chain_health_daily_city."
+            />
+          ) : healthRows.length === 0 && !isLoading ? (
+            <div className="text-sm text-muted-foreground">Нет данных health-chain для выбранного периода.</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className={healthStatusTone}>
+                  {healthStatusLabel}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{latestHealth?.date_key ?? "No date"}</span>
+                {latestAlerts.length > 0 && latestAlerts.slice(0, 4).map((alert) => (
+                  <Badge key={alert} variant="outline" className="text-[11px]">
+                    {alert.replaceAll("_", " ")}
+                  </Badge>
+                ))}
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs text-muted-foreground">Click → Request</div>
+                  <div className="text-lg font-semibold">{formatPercent(toNumber(latestHealth?.click_to_request_rate), 1)}</div>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs text-muted-foreground">Request → Lead</div>
+                  <div className="text-lg font-semibold">{formatPercent(toNumber(latestHealth?.request_to_lead_rate), 1)}</div>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs text-muted-foreground">Lead → Contract</div>
+                  <div className="text-lg font-semibold">{formatPercent(toNumber(latestHealth?.lead_to_contract_rate), 1)}</div>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs text-muted-foreground">Contract GCLID coverage</div>
+                  <div className="text-lg font-semibold">{formatPercent(toNumber(latestHealth?.contract_gclid_coverage_rate), 1)}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

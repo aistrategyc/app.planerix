@@ -2,17 +2,16 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone, timedelta
 import secrets
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
 from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Query, HTTPException, status, Response, Request, BackgroundTasks
-from sqlalchemy import select, func, update, and_, or_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from liderix_api.config.settings import settings
 from liderix_api.db import get_async_session
 from liderix_api.models import Membership, Department
-from liderix_api.models.memberships import MembershipRole, MembershipStatus
 from liderix_api.models import Organization
 from liderix_api.models.users import User
 from liderix_api.schemas.membership import (

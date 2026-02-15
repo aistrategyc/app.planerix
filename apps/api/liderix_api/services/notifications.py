@@ -401,6 +401,9 @@ class NotificationService:
             ses.send_email(Source=from_email, Destination={"ToAddresses": [to_email]}, Message=message)
             logger.info("Email sent via AWS SES to %s", to_email)
             return True
+        except ClientError as e:
+            logger.error("AWS SES ClientError: %s", e)
+            return False
         except ImportError:
             logger.error("boto3 not installed")
             return False

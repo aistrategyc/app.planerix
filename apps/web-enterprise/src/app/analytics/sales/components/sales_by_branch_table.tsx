@@ -22,23 +22,30 @@ interface SalesByBranchTableProps {
 export function SalesByBranchTable({ data, limit = 10 }: SalesByBranchTableProps) {
   const [showAll, setShowAll] = useState(false)
 
+  const getAvgFirstPayment = (row: BranchRow) => {
+    const value = row.total_first_sum ?? 0
+    if (value > 0) return value
+    return row.contract_count > 0 ? row.total_revenue / row.contract_count : 0
+  }
+
   const aggregated = useMemo(() => {
     const totalRevenue = data.reduce((acc, r) => acc + (r.total_revenue ?? 0), 0)
     const totalContracts = data.reduce((acc, r) => acc + (r.contract_count ?? 0), 0)
-    const totalFirstSum = data.reduce((acc, r) => acc + (r.total_first_sum ?? 0), 0)
+    const weightedFirstPayment = data.reduce(
+      (acc, row) => acc + getAvgFirstPayment(row) * (row.contract_count ?? 0),
+      0
+    )
     const totalBranches = data.length
     const avgRevenuePerContract = totalContracts > 0 ? Math.round(totalRevenue / totalContracts) : 0
     const avgRevenuePerBranch = totalBranches > 0 ? Math.round(totalRevenue / totalBranches) : 0
-    const conversionRate =
-      totalRevenue > 0 ? ((totalFirstSum / totalRevenue) * 100).toFixed(1) : "0.0"
+    const avgFirstPayment = totalContracts > 0 ? Math.round(weightedFirstPayment / totalContracts) : 0
     return {
       totalRevenue,
       totalContracts,
-      totalFirstSum,
       totalBranches,
       avgRevenuePerContract,
       avgRevenuePerBranch,
-      conversionRate,
+      avgFirstPayment,
     }
   }, [data])
 
@@ -61,7 +68,15 @@ export function SalesByBranchTable({ data, limit = 10 }: SalesByBranchTableProps
             branch_name: "Прочие",
             contract_count: tail.reduce((acc, r) => acc + (r.contract_count ?? 0), 0),
             total_revenue: tail.reduce((acc, r) => acc + (r.total_revenue ?? 0), 0),
-            total_first_sum: tail.reduce((acc, r) => acc + (r.total_first_sum ?? 0), 0),
+            total_first_sum: (() => {
+              const contracts = tail.reduce((acc, r) => acc + (r.contract_count ?? 0), 0)
+              if (contracts <= 0) return 0
+              const weighted = tail.reduce(
+                (acc, r) => acc + getAvgFirstPayment(r) * (r.contract_count ?? 0),
+                0
+              )
+              return weighted / contracts
+            })(),
           }
         : null
 
@@ -76,9 +91,9 @@ export function SalesByBranchTable({ data, limit = 10 }: SalesByBranchTableProps
       {/* KPI карточки */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Середня конверсія"
-          value={`${aggregated.conversionRate}%`}
-          subtitle="(перший платіж / виручка)"
+          title="Середній перший платіж"
+          value={`${aggregated.avgFirstPayment.toLocaleString("uk-UA")} ₴`}
+          subtitle="(оцінка, середнє по контрактах)"
         />
         <MetricCard
           title="Загальна виручка"
@@ -104,7 +119,7 @@ export function SalesByBranchTable({ data, limit = 10 }: SalesByBranchTableProps
                 <TableHead className="w-[40%]">Філія</TableHead>
                 <TableHead className="text-right">Контракти</TableHead>
                 <TableHead className="text-right">Виручка</TableHead>
-                <TableHead className="text-right">Перший платіж</TableHead>
+                <TableHead className="text-right">Сер. перший платіж</TableHead>
                 <TableHead className="text-right">Доля</TableHead>
               </TableRow>
             </TableHeader>
@@ -112,6 +127,7 @@ export function SalesByBranchTable({ data, limit = 10 }: SalesByBranchTableProps
               {tableRows.length > 0 ? (
                 tableRows.map((row) => {
                   const share = revenueShare(row.total_revenue)
+                  const avgFirstPayment = getAvgFirstPayment(row)
                   return (
                     <TableRow key={row.branch_sk} className="hover:bg-muted/40 transition-colors even:bg-muted/20">
                       <TableCell className="pr-4">
@@ -124,7 +140,7 @@ export function SalesByBranchTable({ data, limit = 10 }: SalesByBranchTableProps
                         {row.total_revenue?.toLocaleString("uk-UA")} ₴
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {row.total_first_sum?.toLocaleString("uk-UA")} ₴
+                        {avgFirstPayment.toLocaleString("uk-UA")} ₴
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="inline-flex flex-col items-end gap-1">
@@ -186,7 +202,7 @@ export function SalesByBranchTable({ data, limit = 10 }: SalesByBranchTableProps
                     {aggregated.totalRevenue.toLocaleString("uk-UA")} ₴
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {aggregated.totalFirstSum.toLocaleString("uk-UA")} ₴
+                    {aggregated.avgFirstPayment.toLocaleString("uk-UA")} ₴
                   </TableCell>
                   <TableCell className="text-right tabular-nums">100%</TableCell>
                 </TableRow>

@@ -1,9 +1,17 @@
-# ✅ Service — fetch_ads_analytics
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
-from liderix_api.schemas.ads import *
-from datetime import date, timedelta
 from typing import Optional
+from datetime import date, timedelta
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from liderix_api.schemas.ads import (
+    AdsAdGroupItem,
+    AdsAnalyticsResponse,
+    AdsCampaignItem,
+    AdsDailyItem,
+    AdsPlatformItem,
+    AdsUtmItem,
+)
 
 async def fetch_ads_analytics(
     db: AsyncSession,

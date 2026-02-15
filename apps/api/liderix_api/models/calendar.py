@@ -5,8 +5,6 @@ Calendar and Event models for scheduling and time management
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
-from typing import List
 
 from sqlalchemy import (
     Column,
@@ -18,13 +16,11 @@ from sqlalchemy import (
     Index,
     Integer,
     Boolean,
-    Float,
     UniqueConstraint,
     CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 
 from liderix_api.db import Base
 from liderix_api.enums import EventType, EventStatus, RecurrenceType

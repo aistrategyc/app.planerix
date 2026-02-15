@@ -2,6 +2,8 @@
  * API client for Contracts Attribution Analysis
  *
  * Provides detailed analysis of contract sources, platforms, and conversion funnels
+ *
+ * @deprecated This file is currently unused by the UI. Prefer `/api/analytics/widgets/*` + `/api/analytics/attribution/*`.
  */
 
 import { api } from './config'

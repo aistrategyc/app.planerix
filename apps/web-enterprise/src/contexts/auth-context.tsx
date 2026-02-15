@@ -9,20 +9,9 @@ import React, {
   useRef,
 } from 'react';
 
-import {
-  clearTokens,
-  getAccessToken,
-  isAccessTokenExpired,
-  setAccessToken as persistAccessToken,
-} from "@/lib/api/config";
+import { clearTokens, getAccessToken, isAccessTokenExpired, setAccessToken as persistAccessToken } from "@/lib/api/config";
 import { CompanyAPI, type MembershipWithUser } from "@/lib/api/company";
-import {
-  login as apiLogin,
-  refresh as apiRefresh,
-  logout as apiLogout,
-  register as apiRegister,
-  resendVerification as apiResendVerification,
-} from "@/lib/api/auth";
+import { login as apiLogin, refresh as apiRefresh, logout as apiLogout, register as apiRegister, resendVerification as apiResendVerification } from "@/lib/api/auth";
 
 // ---- types ----
 

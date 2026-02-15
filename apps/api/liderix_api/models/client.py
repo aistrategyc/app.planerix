@@ -1,10 +1,17 @@
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum as PythonEnum
+from typing import TYPE_CHECKING
+import uuid
+
 from sqlalchemy import String, DateTime, ForeignKey, Enum as SQLEnum, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped, mapped_column
-from datetime import datetime
-import uuid
 from liderix_api.db import Base
-from enum import Enum as PythonEnum
+
+if TYPE_CHECKING:
+    from liderix_api.models.users import User
 
 class SubscriptionTier(PythonEnum):
     free = "free"
@@ -21,4 +28,4 @@ class Client(Base):
     max_employees: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
-    user: Mapped["User"] = relationship("User", back_populates="clients")
+    user: Mapped[User] = relationship("User", back_populates="clients")

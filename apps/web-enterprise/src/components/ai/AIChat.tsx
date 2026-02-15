@@ -72,7 +72,7 @@ export default function AIChat() {
           widgetData: response.widget_data,
         },
       ])
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "❌ Ошибка при получении ответа от агента." },

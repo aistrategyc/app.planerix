@@ -19,22 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { PageLoader } from "@/components/ui/loading-spinner"
 import { PageHeader } from "@/components/layout/PageHeader"
 
-import {
-  Plus,
-  Search,
-  FolderOpen,
-  Calendar,
-  Users,
-  Target,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  BarChart3,
-  Edit3,
-  Trash2,
-  Loader2,
-  Award
-} from "lucide-react"
+import { Plus, Search, FolderOpen, Calendar, Users, Target, AlertTriangle, CheckCircle2, Clock, BarChart3, Edit3, Trash2, Loader2, Award } from "lucide-react"
 
 import ProtectedRoute from "@/components/auth/ProtectedRoute"
 import { ProjectsAPI, type Project, type ProjectCreate, type ProjectMember, type ProjectHealth, ProjectStatus, ProjectPriority } from "@/lib/api/projects"

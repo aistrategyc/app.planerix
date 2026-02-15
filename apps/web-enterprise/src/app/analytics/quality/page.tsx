@@ -4,32 +4,27 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { WidgetTable } from "@/components/analytics/WidgetTable"
-import { api } from "@/lib/api/config"
+import { fetchWidget, WidgetRow } from "@/lib/api/analytics-widgets"
 import { RefreshCw } from "lucide-react"
 import { PageHeader } from "@/components/layout/PageHeader"
 
 interface FreshnessRow {
-  agent_key?: string | null
-  as_of_date?: string | null
-  obj?: string | null
-  last_ts?: string | null
+  [k: string]: unknown
+  table_name?: string | null
+  max_ts?: string | null
+  row_count?: number | null
 }
 
-interface AgentReadyRow {
-  date_key?: string | null
-  id_city?: number | null
-  city_name?: string | null
-  contracts_all?: number | null
-  contracts_meta?: number | null
-  contracts_gads?: number | null
-  contracts_offline?: number | null
-  spend_all?: number | null
-  spend_meta?: number | null
-  spend_gads?: number | null
-  cpa_all_contracts?: number | null
-  cpa_paid_contracts?: number | null
-  offline_share?: number | null
-  refreshed_at?: string | null
+interface GapRow {
+  [k: string]: unknown
+  gap_key?: string | null
+  is_gap?: boolean | null
+}
+
+interface QualityRow {
+  [k: string]: unknown
+  check_name?: string | null
+  rows_cnt?: number | null
 }
 
 const formatDateTime = (value: string | null | undefined) => {
@@ -41,7 +36,8 @@ const formatDateTime = (value: string | null | undefined) => {
 
 export default function QualityPage() {
   const [freshness, setFreshness] = useState<FreshnessRow[]>([])
-  const [agentReady, setAgentReady] = useState<AgentReadyRow[]>([])
+  const [gaps, setGaps] = useState<GapRow[]>([])
+  const [quality, setQuality] = useState<QualityRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,16 +45,19 @@ export default function QualityPage() {
     try {
       setLoading(true)
       setError(null)
-      const [freshnessRes, agentReadyRes] = await Promise.all([
-        api.get("/analytics/data-quality/freshness"),
-        api.get("/analytics/data-quality/agent-ready"),
+      const [freshnessRes, gapsRes, qualityRes] = await Promise.all([
+        fetchWidget("data.freshness", { limit: 200 }),
+        fetchWidget("data.gaps", { limit: 200 }),
+        fetchWidget("data.quality", { limit: 200 }),
       ])
-      setFreshness(freshnessRes.data?.items ?? [])
-      setAgentReady(agentReadyRes.data?.items ?? [])
+      setFreshness((freshnessRes.items ?? []) as FreshnessRow[])
+      setGaps((gapsRes.items ?? []) as GapRow[])
+      setQuality((qualityRes.items ?? []) as QualityRow[])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data")
       setFreshness([])
-      setAgentReady([])
+      setGaps([])
+      setQuality([])
     } finally {
       setLoading(false)
     }
@@ -70,7 +69,7 @@ export default function QualityPage() {
 
   const latestRefresh = useMemo(() => {
     const timestamps = freshness
-      .map((row) => row.last_ts)
+      .map((row) => row.max_ts)
       .filter(Boolean)
       .map((value) => new Date(value as string))
       .filter((date) => !Number.isNaN(date.getTime()))
@@ -78,9 +77,10 @@ export default function QualityPage() {
     return new Date(Math.max(...timestamps.map((date) => date.getTime())))
   }, [freshness])
 
-  const agentsCount = useMemo(() => {
-    return new Set(freshness.map((row) => row.agent_key).filter(Boolean)).size
-  }, [freshness])
+  const gapsCount = useMemo(
+    () => gaps.filter((row) => row.is_gap).length,
+    [gaps]
+  )
 
   return (
     <div className="space-y-6">
@@ -104,15 +104,15 @@ export default function QualityPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Agents monitored</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Tables monitored</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{agentsCount || "—"}</CardContent>
+          <CardContent className="text-2xl font-semibold">{freshness.length || "—"}</CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Freshness rows</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Open gaps</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{freshness.length || "—"}</CardContent>
+          <CardContent className="text-2xl font-semibold">{gapsCount || "—"}</CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
@@ -135,10 +135,19 @@ export default function QualityPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Agent-ready signals</CardTitle>
+          <CardTitle className="text-lg">Data gaps</CardTitle>
         </CardHeader>
         <CardContent>
-          <WidgetTable rows={agentReady} emptyLabel={loading ? "Loading..." : "Нет данных по готовности"} />
+          <WidgetTable rows={gaps} emptyLabel={loading ? "Loading..." : "Нет данных по gaps"} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Quality checks</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <WidgetTable rows={quality} emptyLabel={loading ? "Loading..." : "Нет данных по качеству"} />
         </CardContent>
       </Card>
     </div>

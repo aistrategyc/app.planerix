@@ -12,7 +12,6 @@ from sqlalchemy import (
     String,
     Float,
     Boolean,
-    DateTime,
     ForeignKey,
     Index,
     CheckConstraint,

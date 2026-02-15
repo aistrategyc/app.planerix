@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import List
 
 from sqlalchemy import (
     Column,
@@ -16,11 +15,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
-    Integer,
     Boolean,
-    Float,
     UniqueConstraint,
-    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -354,7 +350,6 @@ class NotificationTemplate(Base, TimestampMixin, SoftDeleteMixin):
 
     def render(self, variables: dict) -> dict:
         """Render template with provided variables"""
-        import re
 
         def replace_vars(template: str) -> str:
             if not template:

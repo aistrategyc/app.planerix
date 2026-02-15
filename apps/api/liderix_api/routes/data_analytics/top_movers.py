@@ -131,7 +131,6 @@ async def get_top_movers(
         for row in rows:
             platform, campaign_id, campaign_name = row[0], row[1], row[2]
             leads_cur = int(row[3] or 0)
-            leads_prev = int(row[4] or 0)
             leads_diff = int(row[5] or 0)
             leads_diff_pct = float(row[6]) if row[6] is not None else None
             spend_cur = float(row[7] or 0.0)

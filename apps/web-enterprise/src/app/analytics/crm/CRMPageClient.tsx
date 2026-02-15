@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 import { fetchWidget, fetchWidgetsBatch, fetchWidgetRange, WidgetRow } from "@/lib/api/analytics-widgets"
 import { WidgetTable } from "@/components/analytics/WidgetTable"
 import { AnalyticsEmptyState } from "@/components/analytics/AnalyticsEmptyState"
@@ -19,6 +19,7 @@ import { formatCurrency, formatNumber, formatPercent } from "@/app/analytics/uti
 import { useAuth } from "@/contexts/auth-context"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipItemStyle, chartTooltipStyle } from "@/components/analytics/chart-theme"
 import { PageHeader } from "@/components/layout/PageHeader"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 const toDateInput = (value: Date) => value.toISOString().slice(0, 10)
 
@@ -126,7 +127,7 @@ const resolveSourceMetric = (row: WidgetRow, keys: string[]) => {
   return Number.isNaN(parsed) ? null : parsed
 }
 
-export default function CRMAnalyticsPage() {
+export default function CRMAnalyticsPage({ showCrmRawWidgets = false }: { showCrmRawWidgets?: boolean }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const { cities } = useCities()
   const today = useMemo(() => new Date(), [])
@@ -140,7 +141,6 @@ export default function CRMAnalyticsPage() {
     () => ({
       dateRange: { from: defaultFrom, to: today },
       cityId: "all",
-      platform: "all",
       product: "",
       branch: "",
       source: "",
@@ -155,6 +155,19 @@ export default function CRMAnalyticsPage() {
   const [leadProfileRows, setLeadProfileRows] = useState<WidgetRow[]>([])
   const [funnelRows, setFunnelRows] = useState<WidgetRow[]>([])
   const [sourcePerfRows, setSourcePerfRows] = useState<WidgetRow[]>([])
+  const [contractsRows, setContractsRows] = useState<WidgetRow[]>([])
+  const [contractsDailyRows, setContractsDailyRows] = useState<WidgetRow[]>([])
+  const [funnelDailyRows, setFunnelDailyRows] = useState<WidgetRow[]>([])
+  const [kpiCityRows, setKpiCityRows] = useState<WidgetRow[]>([])
+  const [crmLeadsRows, setCrmLeadsRows] = useState<WidgetRow[]>([])
+  const [metaCreativesRows, setMetaCreativesRows] = useState<WidgetRow[]>([])
+  const [paymentsDailyRows, setPaymentsDailyRows] = useState<WidgetRow[]>([])
+  const [requestsRows, setRequestsRows] = useState<WidgetRow[]>([])
+  const [revenueBySourceRows, setRevenueBySourceRows] = useState<WidgetRow[]>([])
+  const [revenueBySourceDailyRows, setRevenueBySourceDailyRows] = useState<WidgetRow[]>([])
+  const [slaDailyRows, setSlaDailyRows] = useState<WidgetRow[]>([])
+  const [sourcesRows, setSourcesRows] = useState<WidgetRow[]>([])
+  const [crmMissing, setCrmMissing] = useState<Record<string, boolean>>({})
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null)
   const [showAllLeads, setShowAllLeads] = useState(false)
   const [showAllSources, setShowAllSources] = useState(false)
@@ -182,12 +195,50 @@ export default function CRMAnalyticsPage() {
           { widget_key: "crm.leads_table", limit: 200 },
           { widget_key: "crm.funnel" },
           { widget_key: "crm.sources_performance_daily", limit: 200, order_by: "-contracts_cnt" },
+          { widget_key: "crm.contracts", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.contracts_daily", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.funnel_daily", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.kpi_daily_city", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.leads", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.meta_creatives_contracts_daily", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.payments_daily", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.requests", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.revenue_by_source", limit: 200, order_by: "-revenue_sum" },
+          { widget_key: "crm.revenue_by_source_daily_city", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.sla_daily", limit: 200, order_by: "-date_key" },
+          { widget_key: "crm.sources", limit: 200 },
         ],
       })
       setKpiRows(batch.items["crm.kpi_cards"]?.items ?? [])
       setLeadsRows(batch.items["crm.leads_table"]?.items ?? [])
       setFunnelRows(batch.items["crm.funnel"]?.items ?? [])
       setSourcePerfRows(batch.items["crm.sources_performance_daily"]?.items ?? [])
+      setContractsRows(batch.items["crm.contracts"]?.items ?? [])
+      setContractsDailyRows(batch.items["crm.contracts_daily"]?.items ?? [])
+      setFunnelDailyRows(batch.items["crm.funnel_daily"]?.items ?? [])
+      setKpiCityRows(batch.items["crm.kpi_daily_city"]?.items ?? [])
+      setCrmLeadsRows(batch.items["crm.leads"]?.items ?? [])
+      setMetaCreativesRows(batch.items["crm.meta_creatives_contracts_daily"]?.items ?? [])
+      setPaymentsDailyRows(batch.items["crm.payments_daily"]?.items ?? [])
+      setRequestsRows(batch.items["crm.requests"]?.items ?? [])
+      setRevenueBySourceRows(batch.items["crm.revenue_by_source"]?.items ?? [])
+      setRevenueBySourceDailyRows(batch.items["crm.revenue_by_source_daily_city"]?.items ?? [])
+      setSlaDailyRows(batch.items["crm.sla_daily"]?.items ?? [])
+      setSourcesRows(batch.items["crm.sources"]?.items ?? [])
+      setCrmMissing({
+        contracts: Boolean(batch.items["crm.contracts"]?.missing_view),
+        contracts_daily: Boolean(batch.items["crm.contracts_daily"]?.missing_view),
+        funnel_daily: Boolean(batch.items["crm.funnel_daily"]?.missing_view),
+        kpi_city: Boolean(batch.items["crm.kpi_daily_city"]?.missing_view),
+        leads: Boolean(batch.items["crm.leads"]?.missing_view),
+        meta_creatives: Boolean(batch.items["crm.meta_creatives_contracts_daily"]?.missing_view),
+        payments: Boolean(batch.items["crm.payments_daily"]?.missing_view),
+        requests: Boolean(batch.items["crm.requests"]?.missing_view),
+        revenue_by_source: Boolean(batch.items["crm.revenue_by_source"]?.missing_view),
+        revenue_by_source_daily: Boolean(batch.items["crm.revenue_by_source_daily_city"]?.missing_view),
+        sla: Boolean(batch.items["crm.sla_daily"]?.missing_view),
+        sources: Boolean(batch.items["crm.sources"]?.missing_view),
+      })
     } finally {
       setLoading(false)
       setHasLoaded(true)
@@ -340,7 +391,16 @@ export default function CRMAnalyticsPage() {
   }, [sourcePerfRows])
 
   const funnelTotals = useMemo(() => {
-    return funnelRows.reduce(
+    type FunnelTotals = {
+      requests: number
+      leads: number
+      contracts: number
+      contractsSum: number
+      paidSum: number
+      paymentsSum: number
+    }
+
+    return funnelRows.reduce<FunnelTotals>(
       (acc, row) => {
         acc.requests += toNumber(row.requests_cnt) ?? 0
         acc.leads += toNumber(row.leads_cnt) ?? 0
@@ -444,15 +504,15 @@ export default function CRMAnalyticsPage() {
 
   const resolveCityName = (id?: number | null) => {
     if (!id) return "—"
-    const city = cities.find((item) => item.id === id)
-    return city?.name ?? `City #${id}`
+    const city = cities.find((item) => item.id_city === id)
+    return city?.city_name ?? `City #${id}`
   }
 
   const funnelTableRows = useMemo(() => {
     return [...funnelRows]
       .map((row) => ({
         date: (row.date_key ?? row.day_key) as string,
-        city: resolveCityName(row.city_id ?? row.id_city),
+        city: resolveCityName(toNumber(row.city_id ?? row.id_city) ?? null),
         requests: toNumber(row.requests_cnt) ?? 0,
         leads: toNumber(row.leads_cnt) ?? 0,
         contracts: toNumber(row.contracts_cnt) ?? 0,
@@ -519,7 +579,6 @@ export default function CRMAnalyticsPage() {
         value={draftFilters}
         onDateChange={(value) => setDraftFilters((prev) => ({ ...prev, dateRange: value }))}
         onCityChange={(value) => setDraftFilters((prev) => ({ ...prev, cityId: value }))}
-        onPlatformChange={(value) => setDraftFilters((prev) => ({ ...prev, platform: value }))}
         onProductChange={(value) => setDraftFilters((prev) => ({ ...prev, product: value }))}
         onBranchChange={(value) => setDraftFilters((prev) => ({ ...prev, branch: value }))}
         onSourceChange={(value) => setDraftFilters((prev) => ({ ...prev, source: value }))}
@@ -528,7 +587,6 @@ export default function CRMAnalyticsPage() {
         isLoading={loading}
         compact
         showCity
-        showPlatform={false}
         showProduct
         showBranch
         showSource
@@ -595,7 +653,7 @@ export default function CRMAnalyticsPage() {
             />
           ) : (
             <div className="h-[260px]">
-              <ResponsiveContainer>
+              <SafeResponsiveContainer>
                 <ComposedChart data={crmTrendData} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="crmLeadsFill" x1="0" y1="0" x2="0" y2="1">
@@ -616,19 +674,22 @@ export default function CRMAnalyticsPage() {
                     {...chartAxisProps}
                     tickFormatter={(value) => formatNumber(value as number)}
                   />
-                  <Tooltip
-                    formatter={(value: number, name: string) => {
-                      if (name === "revenue") return [formatCurrency(value), "Revenue"]
-                      return [formatNumber(value), name === "leads" ? "Leads" : "Contracts"]
-                    }}
-                    contentStyle={chartTooltipStyle}
-                    itemStyle={chartTooltipItemStyle}
-                  />
+	                  <Tooltip
+	                    formatter={(value, name) => {
+	                      const label = String(name)
+	                      if (value === null || value === undefined) return ["—", label]
+	                      const numeric = typeof value === "number" ? value : Number(value)
+	                      if (label === "revenue") return [formatCurrency(numeric), "Revenue"]
+	                      return [formatNumber(numeric), label === "leads" ? "Leads" : "Contracts"]
+	                    }}
+	                    contentStyle={chartTooltipStyle}
+	                    itemStyle={chartTooltipItemStyle}
+	                  />
                   <Area type="monotone" dataKey="leads" stroke={CHART_COLORS.primary} fill="url(#crmLeadsFill)" strokeWidth={2} dot={false} yAxisId="left" />
                   <Line type="monotone" dataKey="contracts" stroke={CHART_COLORS.quaternary} strokeWidth={2} dot={false} yAxisId="left" />
                   <Area type="monotone" dataKey="revenue" stroke={CHART_COLORS.secondary} fill="url(#crmRevenueFill)" strokeWidth={2} dot={false} yAxisId="right" />
                 </ComposedChart>
-              </ResponsiveContainer>
+              </SafeResponsiveContainer>
             </div>
           )}
         </CardContent>
@@ -938,6 +999,119 @@ export default function CRMAnalyticsPage() {
           )}
         </CardContent>
       </Card>
+
+      {showCrmRawWidgets && (
+        <Card>
+          <CardHeader>
+            <CardTitle>CRM raw widgets</CardTitle>
+            <CardDescription>Служебные таблицы CRM (для проверки наполненности).</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Contracts</div>
+              {crmMissing.contracts ? (
+                <WidgetStatus title="Нет витрины contracts" description="crm.contracts не подключена." />
+              ) : (
+                <WidgetTable rows={contractsRows} emptyLabel="Нет данных contracts." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Contracts daily</div>
+              {crmMissing.contracts_daily ? (
+                <WidgetStatus title="Нет витрины contracts_daily" description="crm.contracts_daily не подключена." />
+              ) : (
+                <WidgetTable rows={contractsDailyRows} emptyLabel="Нет данных contracts_daily." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Funnel daily</div>
+              {crmMissing.funnel_daily ? (
+                <WidgetStatus title="Нет витрины funnel_daily" description="crm.funnel_daily не подключена." />
+              ) : (
+                <WidgetTable rows={funnelDailyRows} emptyLabel="Нет данных funnel_daily." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">KPI daily city</div>
+              {crmMissing.kpi_city ? (
+                <WidgetStatus title="Нет витрины kpi_daily_city" description="crm.kpi_daily_city не подключена." />
+              ) : (
+                <WidgetTable rows={kpiCityRows} emptyLabel="Нет данных kpi_daily_city." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Leads</div>
+              {crmMissing.leads ? (
+                <WidgetStatus title="Нет витрины leads" description="crm.leads не подключена." />
+              ) : (
+                <WidgetTable rows={crmLeadsRows} emptyLabel="Нет данных leads." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Meta creatives contracts</div>
+              {crmMissing.meta_creatives ? (
+                <WidgetStatus
+                  title="Нет витрины meta_creatives"
+                  description="crm.meta_creatives_contracts_daily не подключена."
+                />
+              ) : (
+                <WidgetTable rows={metaCreativesRows} emptyLabel="Нет данных meta_creatives." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Payments daily</div>
+              {crmMissing.payments ? (
+                <WidgetStatus title="Нет витрины payments_daily" description="crm.payments_daily не подключена." />
+              ) : (
+                <WidgetTable rows={paymentsDailyRows} emptyLabel="Нет данных payments_daily." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Requests</div>
+              {crmMissing.requests ? (
+                <WidgetStatus title="Нет витрины requests" description="crm.requests не подключена." />
+              ) : (
+                <WidgetTable rows={requestsRows} emptyLabel="Нет данных requests." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Revenue by source</div>
+              {crmMissing.revenue_by_source ? (
+                <WidgetStatus title="Нет витрины revenue_by_source" description="crm.revenue_by_source не подключена." />
+              ) : (
+                <WidgetTable rows={revenueBySourceRows} emptyLabel="Нет данных revenue_by_source." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Revenue by source (daily)</div>
+              {crmMissing.revenue_by_source_daily ? (
+                <WidgetStatus
+                  title="Нет витрины revenue_by_source_daily"
+                  description="crm.revenue_by_source_daily_city не подключена."
+                />
+              ) : (
+                <WidgetTable rows={revenueBySourceDailyRows} emptyLabel="Нет данных revenue_by_source_daily." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">SLA daily</div>
+              {crmMissing.sla ? (
+                <WidgetStatus title="Нет витрины SLA" description="crm.sla_daily не подключена." />
+              ) : (
+                <WidgetTable rows={slaDailyRows} emptyLabel="Нет данных SLA." />
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">Sources</div>
+              {crmMissing.sources ? (
+                <WidgetStatus title="Нет витрины sources" description="crm.sources не подключена." />
+              ) : (
+                <WidgetTable rows={sourcesRows} emptyLabel="Нет данных sources." />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
     </div>
   )

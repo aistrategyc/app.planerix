@@ -7,18 +7,10 @@
 
 import React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts"
 import { Award, AlertCircle } from "lucide-react"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipStyle, chartTooltipItemStyle } from "@/components/analytics/chart-theme"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 interface AttributionData {
   period: string
@@ -182,7 +174,7 @@ export function AttributionBreakdown({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={400}>
+        <SafeResponsiveContainer width="100%" height={400}>
           <BarChart data={chartData}>
             <CartesianGrid {...chartGridProps} />
             <XAxis
@@ -226,7 +218,7 @@ export function AttributionBreakdown({
               name="Unattributed"
             />
           </BarChart>
-        </ResponsiveContainer>
+        </SafeResponsiveContainer>
 
         {/* Summary Statistics */}
         <div className="mt-6 pt-6 border-t">

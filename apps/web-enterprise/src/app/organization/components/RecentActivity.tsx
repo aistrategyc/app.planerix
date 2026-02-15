@@ -3,13 +3,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getAuditLogs, AuditLogItem } from "@/lib/api/audit";
-import { 
-  Activity,
-  UserPlus,
-  Plus,
-  Edit,
-  Users
-} from "lucide-react";
+import { Activity, UserPlus, Plus, Edit, Users } from "lucide-react";
 
 interface ActivityItem {
   id: string;

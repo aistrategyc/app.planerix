@@ -3,6 +3,7 @@ import uuid
 import asyncio
 import inspect
 import json
+import os
 from typing import Optional, AsyncGenerator
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
@@ -22,6 +23,7 @@ from liderix_api.db import get_async_session as core_get_async_session
 from liderix_api.middleware.security import add_security_middleware
 
 logger = logging.getLogger("uvicorn.error")
+IS_TESTING = bool(os.getenv("PYTEST_CURRENT_TEST")) or os.getenv("LIDERIX_TESTING") == "1"
 
 # -----------------------------------------------------------------------------
 # Приложение
@@ -181,6 +183,9 @@ async def add_request_id(request: Request, call_next):
 @app.on_event("startup")
 async def on_startup():
     logger.info("Starting application...")
+    if IS_TESTING:
+        logger.info("Testing mode: skipping DB warmup and dependency overrides.")
+        return
 
     max_retries = 3
     for attempt in range(max_retries):
@@ -211,6 +216,9 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     logger.info("Shutting down application...")
+    if IS_TESTING:
+        logger.info("Testing mode: skipping DB disposal.")
+        return
 
     try:
         await engine_liderix.dispose()
@@ -287,6 +295,10 @@ from liderix_api.routes import (  # noqa: E402
     auth as auth_router,
     media_proxy as media_proxy_router,
     analytics as analytics_router,
+    ads as ads_router,
+    ads_manager as ads_manager_router,
+    marketing_campaigns as marketing_campaigns_router,
+    data_analytics as data_analytics_router,
     calendar_events as calendar_router,
     event_links as event_links_router,
     onboarding as onboarding_router,
@@ -320,6 +332,11 @@ app.include_router(media_proxy_router.router, prefix=PREFIX, tags=["Media"])
 app.include_router(integrations_router.router, prefix=PREFIX, tags=["Integrations"])
 app.include_router(ai_router.router, prefix=PREFIX, tags=["AI"])
 app.include_router(analytics_router.router, prefix=f"{PREFIX}/analytics", tags=["Analytics"])
+app.include_router(ads_router.router, prefix=PREFIX, tags=["Ads"])
+if getattr(settings, "ENABLE_LEGACY_ANALYTICS_ROUTES", True):
+    app.include_router(ads_manager_router.router, prefix=PREFIX, tags=["Ads Manager"])
+    app.include_router(marketing_campaigns_router.router, prefix=PREFIX, tags=["Marketing Campaigns"])
+    app.include_router(data_analytics_router.router, prefix=f"{PREFIX}/data-analytics", tags=["Data Analytics (Legacy)"])
 
 if TEST_ANALYTICS_AVAILABLE:
     app.include_router(test_analytics_router, prefix=PREFIX, tags=["Test Analytics"])

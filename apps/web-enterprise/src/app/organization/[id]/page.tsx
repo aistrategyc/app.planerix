@@ -6,20 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { 
-  Building2, 
-  Users, 
-  Briefcase,
-  BarChart3,
-  Target,
-  UserPlus,
-  Edit,
-  Copy,
-  CheckCircle,
-  Crown,
-  Shield,
-  Eye
-} from "lucide-react";
+import { Building2, Users, Briefcase, BarChart3, Target, UserPlus, Edit, Copy, CheckCircle, Crown, Shield, Eye } from "lucide-react";
 
 // Импорты под вашу структуру
 import { EmptyState } from "@/components/ui/empty-state";

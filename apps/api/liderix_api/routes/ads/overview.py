@@ -31,16 +31,17 @@ async def get_ads_overview(
     Returns aggregated metrics: spend, impressions, clicks, leads, contracts, revenue, ROAS, CPL, CTR
     """
     try:
-        # Build platform filter
-        platform_filter = ""
-        if platform:
-            if platform.lower() == "facebook":
-                platform_filter = "WHERE dt BETWEEN :date_from AND :date_to"
-            elif platform.lower() == "google":
-                platform_filter = "WHERE dt BETWEEN :date_from AND :date_to"
+        platform_filter_sql = ""
+        params = {
+            "date_from": date_from,
+            "date_to": date_to,
+        }
+        if platform and platform.lower() in {"facebook", "google"}:
+            platform_filter_sql = "AND platform = :platform"
+            params["platform"] = platform.lower()
 
         # Query from v8_campaigns_daily_full (includes Facebook, Google, and all other platforms)
-        query = text("""
+        query = text(f"""
             WITH platform_agg AS (
                 SELECT
                     SUM(spend) as total_spend,
@@ -53,6 +54,7 @@ async def get_ads_overview(
                 FROM dashboards.v8_campaigns_daily_full
                 WHERE dt BETWEEN :date_from AND :date_to
                     AND platform IN ('facebook', 'google')
+                    {platform_filter_sql}
             )
             SELECT
                 total_spend,
@@ -85,10 +87,7 @@ async def get_ads_overview(
             FROM platform_agg
         """)
 
-        result = await session.execute(query, {
-            "date_from": date_from,
-            "date_to": date_to
-        })
+        result = await session.execute(query, params)
         row = result.fetchone()
 
         if not row:

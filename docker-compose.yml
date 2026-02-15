@@ -37,7 +37,7 @@ services:
 
   api:
     build:
-      context: ./api
+      context: ./apps/api
     container_name: planerix-api
     env_file:
       - ${ENV_FILE:-./.env}
@@ -51,7 +51,7 @@ services:
 
   web:
     build:
-      context: ./web-enterprise
+      context: ./apps/web-enterprise
       args:
         NEXT_PUBLIC_API_ORIGIN: ${NEXT_PUBLIC_API_ORIGIN}
         NEXT_PUBLIC_API_PREFIX: ${NEXT_PUBLIC_API_PREFIX}

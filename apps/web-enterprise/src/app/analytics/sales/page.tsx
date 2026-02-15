@@ -4,13 +4,13 @@ import { useState, useMemo, useCallback } from "react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { DateRangePicker } from "@/components/ui/date_range_picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { AnalyticsFilters, AnalyticsFiltersValue } from "@/app/analytics/components/AnalyticsFilters"
 
 import { Lightbulb, ChevronRight, Download, Search, ChevronDown, ChevronUp } from "lucide-react"
 
@@ -38,7 +38,9 @@ interface MetricTrend {
 }
 
 export default function SalesPage() {
-  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
+  const [draftFilters, setDraftFilters] = useState<AnalyticsFiltersValue>({ dateRange: {}, cityId: "all" })
+  const [appliedFilters, setAppliedFilters] = useState<AnalyticsFiltersValue>({ dateRange: {}, cityId: "all" })
+  const [dateError, setDateError] = useState<string | null>(null)
   const [comparePrevious, setComparePrevious] = useState(false)
   const [filterState, setFilterState] = useState<FilterState>({
     searchQuery: "",
@@ -54,6 +56,8 @@ export default function SalesPage() {
     utm: false,
   })
 
+  const dateRange = appliedFilters.dateRange
+
   const { isLoading, daily, weekly, byService, byBranch, byUtm, refetch } = useSalesData(dateRange)
   const { insights: salesInsights } = useSalesInsights(dateRange) // <-- Переименовали здесь
 
@@ -66,8 +70,26 @@ export default function SalesPage() {
     return { from: prevFrom, to: prevTo }
   }, [comparePrevious, dateRange])
 
+  const applyFilters = () => {
+    if (!draftFilters.dateRange.from || !draftFilters.dateRange.to) {
+      setDateError("Select a date range to apply filters.")
+      return
+    }
+    setDateError(null)
+    setAppliedFilters(draftFilters)
+  }
+
+  const resetFilters = () => {
+    const resetValue: AnalyticsFiltersValue = { dateRange: {}, cityId: "all" }
+    setDraftFilters(resetValue)
+    setAppliedFilters(resetValue)
+    setDateError(null)
+    setComparePrevious(false)
+    setFilterState({ searchQuery: "", sortBy: "total_revenue", sortOrder: "desc", filterField: "all" })
+  }
+
   // ВАЖНО: логика ниже сохранена как у вас (да, это условный вызов хука в исходнике)
-  const prevSalesData = prevRange ? useSalesData(prevRange) : null
+  const prevSalesData = useSalesData(prevRange ?? undefined, { enabled: Boolean(prevRange) })
 
   // Агрегированные метрики
   const metrics = useMemo(() => {
@@ -240,52 +262,63 @@ export default function SalesPage() {
       <PageHeader
         title="📊 Продажі (з CRM)"
         description="Дані про контракти, виручку та канали за вибраний період"
-        actions={
-          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto items-start sm:items-center">
-            <DateRangePicker value={dateRange} onChange={setDateRange} />
+      />
+
+      {dateError && <div className="text-xs text-red-600">{dateError}</div>}
+
+      <AnalyticsFilters
+        value={draftFilters}
+        onDateChange={(value) => setDraftFilters((prev) => ({ ...prev, dateRange: value }))}
+        onApply={applyFilters}
+        onReset={resetFilters}
+        isLoading={isLoading}
+        showCity={false}
+        compact
+        extraControls={
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setComparePrevious(!comparePrevious)}
-              disabled={!dateRange.from || !dateRange.to}
+              disabled={!draftFilters.dateRange.from || !draftFilters.dateRange.to}
             >
-              {comparePrevious ? "Вимкнути порівняння" : "Порівняти з попереднім"}
+              {comparePrevious ? "Disable comparison" : "Compare with previous"}
             </Button>
             <div className="relative w-full sm:w-56">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <Input
-                placeholder="Пошук..."
+                placeholder="Search..."
                 value={filterState.searchQuery}
                 onChange={(e) => setFilterState({ ...filterState, searchQuery: e.target.value })}
                 className="pl-8 w-full"
-                aria-label="Пошук за філіями, послугами або UTM"
+                aria-label="Search by branch, service, or UTM"
               />
             </div>
             <Select
               value={filterState.filterField}
               onValueChange={(value) => setFilterState({ ...filterState, filterField: value as FilterState["filterField"] })}
             >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Фільтр за полем" />
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Filter field" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Усі поля</SelectItem>
-                <SelectItem value="branch_name">Філія</SelectItem>
-                <SelectItem value="service_name">Послуга</SelectItem>
-                <SelectItem value="utm_source">UTM Джерело</SelectItem>
+                <SelectItem value="all">All fields</SelectItem>
+                <SelectItem value="branch_name">Branch</SelectItem>
+                <SelectItem value="service_name">Service</SelectItem>
+                <SelectItem value="utm_source">UTM source</SelectItem>
               </SelectContent>
             </Select>
             <Select
               value={filterState.sortBy}
               onValueChange={(value) => setFilterState({ ...filterState, sortBy: value })}
             >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Сортувати за" />
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="total_revenue">Виручка</SelectItem>
-                <SelectItem value="contract_count">Контракти</SelectItem>
-                <SelectItem value="total_first_sum">Перший платіж</SelectItem>
+                <SelectItem value="total_revenue">Revenue</SelectItem>
+                <SelectItem value="contract_count">Contracts</SelectItem>
+                <SelectItem value="total_first_sum">First payment</SelectItem>
               </SelectContent>
             </Select>
             <Select
@@ -293,23 +326,13 @@ export default function SalesPage() {
               onValueChange={(value) => setFilterState({ ...filterState, sortOrder: value as "asc" | "desc" })}
             >
               <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Порядок" />
+                <SelectValue placeholder="Order" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="desc">За спаданням</SelectItem>
-                <SelectItem value="asc">За зростанням</SelectItem>
+                <SelectItem value="desc">Descending</SelectItem>
+                <SelectItem value="asc">Ascending</SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setFilterState({ searchQuery: "", sortBy: "total_revenue", sortOrder: "desc", filterField: "all" })
-              }
-              aria-label="Скинути фільтри"
-            >
-              Скинути
-            </Button>
           </div>
         }
       />

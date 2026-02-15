@@ -4,17 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { 
-  Building2, 
-  Copy, 
-  Edit,
-  UserPlus,
-  MoreHorizontal,
-  Settings,
-  Download,
-  Archive,
-  Trash2
-} from "lucide-react";
+import { Building2, Copy, Edit, UserPlus, MoreHorizontal, Settings, Download, Archive, Trash2 } from "lucide-react";
 import type { Organization } from "../hooks/useOrganization";
 
 interface OrganizationHeaderProps {

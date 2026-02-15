@@ -1,13 +1,9 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
 import secrets
 
 from liderix_api.db import get_async_session
 from liderix_api.models.users import User
-from liderix_api.schemas.user import UserRead
-from liderix_api.services.auth import generate_jwt_token
-from liderix_api.security.password import get_password_hash
 from sqlalchemy import select, update
 
 from .utils import now_utc, sha256_hex, normalize_email

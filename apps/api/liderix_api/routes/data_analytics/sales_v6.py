@@ -12,8 +12,6 @@ from datetime import datetime, date
 from typing import Optional
 
 from liderix_api.db import get_itstep_session
-from liderix_api.services.dependencies import get_current_user
-from liderix_api.models.users import User
 
 router = APIRouter(tags=["Data Analytics v6 - Sales"])
 

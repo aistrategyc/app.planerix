@@ -18,7 +18,7 @@ from liderix_api.models import MetricDefinition
 from liderix_api.schemas.okrs import (
     ObjectiveCreate, ObjectiveUpdate, ObjectiveRead, ObjectiveListResponse,
     KeyResultCreate, KeyResultUpdate, KeyResultRead,
-    KeyResultSnapshotRead, KeyResultSnapshotListResponse,
+    KeyResultSnapshotListResponse,
     OKRProgressReport, OKRAnalytics
 )
 from liderix_api.db import get_async_session

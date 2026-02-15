@@ -2,15 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 import { ExternalLink } from "lucide-react"
 
 import { AttributionFilterBar } from "@/app/attribution/components/AttributionFilterBar"
@@ -312,9 +304,6 @@ export default function AttributionAdsCampaignsClient() {
     }
     if (appliedFilters.cityId !== "all") {
       params.id_city = appliedFilters.cityId
-    }
-    if (appliedFilters.platform !== "all") {
-      params.platform = appliedFilters.platform
     }
     if (appliedFilters.channel !== "all") {
       params.channel = appliedFilters.channel
@@ -850,15 +839,18 @@ export default function AttributionAdsCampaignsClient() {
                         <CartesianGrid {...chartGridProps} vertical={false} />
                         <XAxis dataKey="date" {...chartAxisProps} />
                         <YAxis tickFormatter={(value) => formatNumber(value)} {...chartAxisProps} />
-                        <Tooltip
-                          contentStyle={chartTooltipStyle}
-                          itemStyle={chartTooltipItemStyle}
-                          formatter={(value: number, name: string) => {
-                            if (name === "spend") return [formatCurrency(value), "Spend"]
-                            if (name === "paid_sum") return [formatCurrency(value), "Paid sum"]
-                            return [formatNumber(value), name]
-                          }}
-                        />
+	                        <Tooltip
+	                          contentStyle={chartTooltipStyle}
+	                          itemStyle={chartTooltipItemStyle}
+	                          formatter={(value, name) => {
+	                            const label = String(name)
+	                            if (value === null || value === undefined) return ["—", label]
+	                            const numeric = typeof value === "number" ? value : Number(value)
+	                            if (label === "spend") return [formatCurrency(numeric), "Spend"]
+	                            if (label === "paid_sum") return [formatCurrency(numeric), "Paid sum"]
+	                            return [formatNumber(numeric), label]
+	                          }}
+	                        />
                         <Area type="monotone" dataKey="spend" stroke={CHART_COLORS.primary} fill="url(#campaignSpendFill)" strokeWidth={2} dot={false} />
                         <Line type="monotone" dataKey="paid_sum" stroke={CHART_COLORS.tertiary} strokeWidth={2} dot={false} />
                       </ComposedChart>

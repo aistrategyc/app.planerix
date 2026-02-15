@@ -5,11 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts'
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area } from 'recharts'
 import { Package, TrendingUp, Target, DollarSign, Users, BarChart3, Award } from "lucide-react"
 import { api } from "@/lib/api/config"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipItemStyle, chartTooltipStyle } from "@/components/analytics/chart-theme"
 import { PageHeader } from "@/components/layout/PageHeader"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
+import { formatCurrency, formatNumber, formatPercent } from "@/app/analytics/utils/formatters"
+import { ExecutiveSummary, type ExecutiveSummaryItem } from "@/components/analytics/ExecutiveSummary"
+import { AnalyticsSkeleton } from "@/components/analytics/AnalyticsSkeleton"
 
 interface ProductData {
   products: Array<{
@@ -31,21 +35,9 @@ interface ProductData {
   }>
 }
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
-    maximumFractionDigits: 0
-  }).format(value)
-}
-
-const formatNumber = (value: number) => {
-  return new Intl.NumberFormat('ru-RU').format(value)
-}
-
-const formatPercent = (value: number) => {
-  return `${(value || 0).toFixed(1)}%`
-}
+const formatRuble = (value: number) =>
+  formatCurrency(value, { currencyCode: "RUB", minimumFractionDigits: 0, maximumFractionDigits: 0 })
+const formatPercentValue = (value: number) => formatPercent(value, { digits: 1, assumeRatio: false })
 
 // Цветовая палитра для продуктов
 const PRODUCT_COLORS = [
@@ -83,15 +75,23 @@ export default function ProductsPage() {
       const start = new Date()
       start.setDate(today.getDate() - 30)
 
-      const response = await api.get("/analytics/sales/v6/products/performance", {
-        params: {
-          date_from: start.toISOString().slice(0, 10),
-          date_to: today.toISOString().slice(0, 10),
-        },
-      })
+      const [performanceRes, timelineRes] = await Promise.all([
+        api.get("/analytics/sales/v6/products/performance", {
+          params: {
+            date_from: start.toISOString().slice(0, 10),
+            date_to: today.toISOString().slice(0, 10),
+          },
+        }),
+        api.get("/analytics/sales/v6/products/timeline", {
+          params: {
+            date_from: start.toISOString().slice(0, 10),
+            date_to: today.toISOString().slice(0, 10),
+          },
+        }),
+      ])
 
-      const products = Array.isArray(response.data)
-        ? response.data.map((item: any) => ({
+      const products = Array.isArray(performanceRes.data)
+        ? performanceRes.data.map((item: any) => ({
             product_key: item.product_name ?? "unknown",
             product_name: item.product_name ?? "Unknown",
             product_code: "",
@@ -105,7 +105,15 @@ export default function ProductsPage() {
 
       setData({
         products,
-        timeline: [],
+        timeline: Array.isArray(timelineRes.data)
+          ? timelineRes.data.map((item: any) => ({
+              date: item.date,
+              product_key: item.product_key ?? item.product_name ?? "unknown",
+              product_name: item.product_name ?? "Unknown",
+              contracts: item.contracts ?? 0,
+              revenue: item.revenue ?? 0,
+            }))
+          : [],
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data")
@@ -215,6 +223,36 @@ export default function ProductsPage() {
   const pieData = preparePieData()
   const timelineData = prepareTimelineData()
   const productAnalysis = prepareProductAnalysis()
+  const topProduct = topProducts[0]
+  const summaryItems: ExecutiveSummaryItem[] = [
+    {
+      title: "Revenue",
+      kpi: formatRuble(totals.totalRevenue),
+      deltaLabel: "n/a",
+      deltaDirection: "flat",
+      reason: topProduct ? `Top product: ${topProduct.product_name}.` : "No ranked products yet.",
+      action: "Prioritize high-revenue products in campaigns.",
+      impact: `Contracts: ${formatNumber(totals.totalContracts)}.`,
+    },
+    {
+      title: "Conversion",
+      kpi: formatPercentValue(totals.avgConversionRate),
+      deltaLabel: "n/a",
+      deltaDirection: "flat",
+      reason: "Conversion based on total leads vs contracts.",
+      action: "Improve lead quality and follow-up speed.",
+      impact: `Leads: ${formatNumber(totals.totalLeads)}.`,
+    },
+    {
+      title: "Avg Contract",
+      kpi: formatRuble(totals.avgContractValue),
+      deltaLabel: "n/a",
+      deltaDirection: "flat",
+      reason: "Average check across all products.",
+      action: "Upsell premium courses and bundles.",
+      impact: `Products tracked: ${formatNumber(totals.totalProducts)}.`,
+    },
+  ]
 
   if (loading) {
     return (
@@ -224,11 +262,7 @@ export default function ProductsPage() {
           description="Эффективность продуктов и форм по конверсиям и доходам"
           actions={<div className="animate-pulse bg-muted rounded h-8 w-32" />}
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="animate-pulse bg-slate-200 rounded-lg h-32"></div>
-          ))}
-        </div>
+        <AnalyticsSkeleton variant="grid" count={4} />
       </div>
     )
   }
@@ -303,6 +337,12 @@ export default function ProductsPage() {
         }
       />
 
+      <ExecutiveSummary
+        title="Executive Summary"
+        subtitle="Key signals and recommended actions"
+        items={summaryItems}
+      />
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -321,7 +361,7 @@ export default function ProductsPage() {
             <DollarSign className="h-5 w-5 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totals.totalRevenue)}</div>
+            <div className="text-2xl font-bold">{formatRuble(totals.totalRevenue)}</div>
           </CardContent>
         </Card>
 
@@ -331,7 +371,7 @@ export default function ProductsPage() {
             <Target className="h-5 w-5 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatPercent(totals.avgConversionRate)}</div>
+            <div className="text-2xl font-bold">{formatPercentValue(totals.avgConversionRate)}</div>
           </CardContent>
         </Card>
 
@@ -341,7 +381,7 @@ export default function ProductsPage() {
             <Award className="h-5 w-5 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totals.avgContractValue)}</div>
+            <div className="text-2xl font-bold">{formatRuble(totals.avgContractValue)}</div>
           </CardContent>
         </Card>
       </div>
@@ -357,7 +397,7 @@ export default function ProductsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
+              <SafeResponsiveContainer width="100%" height={400}>
                 <BarChart data={topProducts} layout="horizontal">
                   <CartesianGrid {...chartGridProps} />
                   <XAxis
@@ -379,8 +419,8 @@ export default function ProductsPage() {
                     formatter={(value, name) => {
                       const label = String(name)
                       return [
-                        label.includes('revenue') || label.includes('avg_contract_value') ? formatCurrency(Number(value)) :
-                        label.includes('conversion_rate') ? formatPercent(Number(value)) :
+                        label.includes('revenue') || label.includes('avg_contract_value') ? formatRuble(Number(value)) :
+                        label.includes('conversion_rate') ? formatPercentValue(Number(value)) :
                         formatNumber(Number(value)),
                         label === 'revenue' ? 'Доход' :
                         label === 'leads' ? 'Лиды' :
@@ -397,7 +437,7 @@ export default function ProductsPage() {
                     name={sortBy === "revenue" ? "Доход" : sortBy === "leads" ? "Лиды" : sortBy === "contracts" ? "Контракты" : sortBy === "conversion_rate" ? "Конверсия" : "Средний чек"}
                   />
                 </BarChart>
-              </ResponsiveContainer>
+              </SafeResponsiveContainer>
             </CardContent>
           </Card>
 
@@ -410,7 +450,7 @@ export default function ProductsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
+                <SafeResponsiveContainer width="100%" height={400}>
                   <PieChart>
                     <Pie
                       data={pieData}
@@ -428,10 +468,10 @@ export default function ProductsPage() {
                     <Tooltip
                       contentStyle={chartTooltipStyle}
                       itemStyle={chartTooltipItemStyle}
-                      formatter={(value) => formatCurrency(Number(value))}
+                      formatter={(value) => formatRuble(Number(value))}
                     />
                   </PieChart>
-                </ResponsiveContainer>
+                </SafeResponsiveContainer>
               </CardContent>
             </Card>
           )}
@@ -447,15 +487,15 @@ export default function ProductsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={400}>
+            <SafeResponsiveContainer width="100%" height={400}>
               <AreaChart data={timelineData}>
                 <CartesianGrid {...chartGridProps} />
                 <XAxis dataKey="date" {...chartAxisProps} />
-                <YAxis tickFormatter={(value) => formatCurrency(Number(value))} {...chartAxisProps} />
+                <YAxis tickFormatter={(value) => formatRuble(Number(value))} {...chartAxisProps} />
                 <Tooltip
                   contentStyle={chartTooltipStyle}
                   itemStyle={chartTooltipItemStyle}
-                  formatter={(value, name) => [formatCurrency(Number(value)), name]}
+                  formatter={(value, name) => [formatRuble(Number(value)), name]}
                   labelFormatter={(label) => `Дата: ${label}`}
                 />
                 <Legend />
@@ -472,7 +512,7 @@ export default function ProductsPage() {
                   />
                 ))}
               </AreaChart>
-            </ResponsiveContainer>
+            </SafeResponsiveContainer>
           </CardContent>
         </Card>
       )}
@@ -486,7 +526,7 @@ export default function ProductsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={400}>
+            <SafeResponsiveContainer width="100%" height={400}>
               <BarChart data={productAnalysis}>
                 <CartesianGrid {...chartGridProps} />
                 <XAxis
@@ -499,13 +539,13 @@ export default function ProductsPage() {
                   tickFormatter={(value) => value && value.length > 12 ? value.substring(0, 12) + "..." : value || 'N/A'}
                 />
                 <YAxis yAxisId="left" tickFormatter={(value) => formatNumber(Number(value))} {...chartAxisProps} />
-                <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => formatPercent(Number(value))} {...chartAxisProps} />
+                <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => formatPercentValue(Number(value))} {...chartAxisProps} />
                 <Tooltip
                   contentStyle={chartTooltipStyle}
                   itemStyle={chartTooltipItemStyle}
                   formatter={(value, name) => [
-                    name === 'conversion_rate' ? formatPercent(Number(value)) :
-                    name === 'avg_contract_value' ? formatCurrency(Number(value)) :
+                    name === 'conversion_rate' ? formatPercentValue(Number(value)) :
+                    name === 'avg_contract_value' ? formatRuble(Number(value)) :
                     formatNumber(Number(value)),
                     name === 'leads' ? 'Лиды' :
                     name === 'contracts' ? 'Контракты' :
@@ -518,7 +558,7 @@ export default function ProductsPage() {
                 <Bar yAxisId="left" dataKey="contracts" fill={CHART_COLORS.secondary} name="Контракты" />
                 <Bar yAxisId="right" dataKey="conversion_rate" fill={CHART_COLORS.tertiary} name="Конверсия %" />
               </BarChart>
-            </ResponsiveContainer>
+            </SafeResponsiveContainer>
           </CardContent>
         </Card>
       )}
@@ -565,13 +605,13 @@ export default function ProductsPage() {
                       </td>
                       <td className="py-2">{formatNumber(product.leads)}</td>
                       <td className="py-2">{formatNumber(product.contracts)}</td>
-                      <td className="py-2 font-bold text-green-600">{formatCurrency(product.revenue)}</td>
+                      <td className="py-2 font-bold text-green-600">{formatRuble(product.revenue)}</td>
                       <td className="py-2">
                         <span className={product.conversion_rate > 10 ? "text-green-600 font-medium" : product.conversion_rate > 5 ? "text-orange-600" : "text-slate-600"}>
-                          {formatPercent(product.conversion_rate)}
+                          {formatPercentValue(product.conversion_rate)}
                         </span>
                       </td>
-                      <td className="py-2">{formatCurrency(product.avg_contract_value)}</td>
+                      <td className="py-2">{formatRuble(product.avg_contract_value)}</td>
                       <td className="py-2">
                         <span className={roi > 5 ? "text-green-600 font-medium" : roi > 2 ? "text-orange-600" : "text-slate-600"}>
                           {roi.toFixed(1)}x

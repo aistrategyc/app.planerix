@@ -2,12 +2,12 @@
 const nextConfig = {
   output: "standalone",
   eslint: {
-    // Ignore during builds for now - we'll fix linting issues later
-    ignoreDuringBuilds: true,
+    // Enforce linting in builds.
+    ignoreDuringBuilds: false,
   },
   typescript: {
-    // Ignore type errors during builds for now
-    ignoreBuildErrors: true,
+    // Enforce type-checking in builds.
+    ignoreBuildErrors: false,
   },
 
   // Experimental features for better performance

@@ -5,14 +5,13 @@ Endpoints for managing links between events/tasks/projects and OKRs/KPIs.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, delete
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from uuid import UUID
 
 from liderix_api.db import get_async_session
 from liderix_api.services.auth import get_current_user
-from liderix_api.services.permissions import check_organization_access
 from liderix_api.models.users import User
 from liderix_api.models.event_links import EventLink
 from liderix_api.schemas.event_links import (
@@ -20,7 +19,6 @@ from liderix_api.schemas.event_links import (
     EventLinkUpdate,
     EventLinkRead,
     EventLinkListResponse,
-    EventLinkFilters,
     EventLinkBulkCreateRequest,
     EventLinkBulkCreateResponse,
     EventLinkAnalytics,
@@ -411,7 +409,7 @@ async def get_event_link_analytics(
     # Active/inactive counts
     active_query = select(func.count()).select_from(EventLink).where(
         EventLink.deleted_at.is_(None),
-        EventLink.is_active == True
+        EventLink.is_active.is_(True)
     )
     active_count = (await session.execute(active_query)).scalar() or 0
 

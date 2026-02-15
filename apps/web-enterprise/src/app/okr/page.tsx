@@ -16,34 +16,10 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { AnalyticsEmptyState } from "@/components/analytics/AnalyticsEmptyState"
-import { EmptyState } from "@/components/ui/empty-state"
-import { PageLoader } from "@/components/ui/loading-spinner"
 
-import {
-  Plus,
-  Target,
-  AlertCircle,
-  Calendar,
-  BarChart3,
-  Search,
-  Edit3,
-  Trash2,
-  Award,
-  Zap,
-  Clock
-} from "lucide-react"
+import { Plus, Target, AlertCircle, Calendar, BarChart3, Search, Edit3, Trash2, Award, Zap, Clock } from "lucide-react"
 
-import {
-  OKRsAPI,
-  type OKR,
-  type OKRCreate,
-  type KeyResult,
-  type KeyResultCreate,
-  type KeyResultUpdate,
-  type ObjectiveVisibility,
-  type KeyResultDirection,
-  type KeyResultProgressRule,
-} from "@/lib/api/okr"
+import { OKRsAPI, type OKR, type OKRCreate, type KeyResult, type KeyResultCreate, type KeyResultUpdate, type ObjectiveVisibility, type KeyResultDirection, type KeyResultProgressRule } from "@/lib/api/okr"
 import { MetricsAPI, type MetricDefinition } from "@/lib/api/metrics"
 
 
@@ -497,8 +473,8 @@ function OKRPageContent() {
                     <Label htmlFor="status">Status</Label>
                     <Select
                       value={newObjective.status}
-                      onValueChange={(value: OKRCreate["status"]) =>
-                        setNewObjective({ ...newObjective, status: value })
+                      onValueChange={(value) =>
+                        setNewObjective({ ...newObjective, status: value as OKRCreate["status"] })
                       }
                     >
                       <SelectTrigger>
@@ -517,8 +493,11 @@ function OKRPageContent() {
                     <Label htmlFor="visibility">Visibility</Label>
                     <Select
                       value={(newObjective.visibility as ObjectiveVisibility) || "internal"}
-                      onValueChange={(value: ObjectiveVisibility) =>
-                        setNewObjective({ ...newObjective, visibility: value })
+                      onValueChange={(value) =>
+                        setNewObjective({
+                          ...newObjective,
+                          visibility: value as ObjectiveVisibility,
+                        })
                       }
                     >
                       <SelectTrigger>

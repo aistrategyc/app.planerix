@@ -2,7 +2,20 @@
 // Complete ITstep Analytics API client based on real DWH data
 
 import { api } from "./config"
-import { fetchWidget, fetchWidgetRange, normalizeWidgetFilters, WidgetFilters, WidgetRow } from "./analytics-widgets"
+import {
+  fetchWidget,
+  fetchWidgetParsed,
+  fetchWidgetRange,
+  normalizeWidgetFilters,
+  WidgetFilters,
+  WidgetRow,
+} from "./analytics-widgets"
+import {
+  campaignsTopMetricsRowSchema,
+  crmFunnelRowSchema,
+  creativesTableRowSchema,
+  metaCreativeFatigue7dRowSchema,
+} from "@/lib/widgets/widgetSchemas"
 
 const toNumber = (value: unknown) => {
   if (typeof value === "number") return value
@@ -205,17 +218,22 @@ export class AnalyticsAPI {
    */
   static async getDashboardOverview(dateRange: DateRange): Promise<DashboardOverview> {
     const [topMetrics, campaigns, creatives] = await Promise.all([
-      fetchWidget("campaigns.top_metrics", toWidgetFilters(dateRange)),
+      fetchWidgetParsed("campaigns.top_metrics", toWidgetFilters(dateRange), campaignsTopMetricsRowSchema),
       fetchWidget("campaigns.table", toWidgetFilters(dateRange, { limit: 1000 })),
-      fetchWidget("creatives.table", toWidgetFilters(dateRange, { limit: 1000 })),
+      fetchWidgetParsed("creatives.table", toWidgetFilters(dateRange, { limit: 1000 }), creativesTableRowSchema),
     ])
 
-    const totals = topMetrics.items.reduce(
+    const totals = topMetrics.items.reduce<{
+      spend: number
+      revenue: number
+      conversions: number
+      leads: number
+    }>(
       (acc, row) => {
-        acc.spend += pickNumber(row, ["ads_spend_total", "spend", "meta_spend", "gads_spend"])
-        acc.revenue += pickNumber(row, ["crm_paid_sum", "paid_sum", "revenue", "contracts_sum"])
-        acc.conversions += pickNumber(row, ["crm_contracts", "contracts_cnt", "contracts"])
-        acc.leads += pickNumber(row, ["crm_leads", "leads_cnt", "meta_leads"])
+        acc.spend += row.adsSpendTotal ?? row.spend ?? row.metaSpend ?? row.gadsSpend ?? 0
+        acc.revenue += row.crmPaidSum ?? row.paidSum ?? row.revenue ?? row.contractsSum ?? 0
+        acc.conversions += row.crmContracts ?? row.contractsCnt ?? row.contracts ?? 0
+        acc.leads += row.crmLeads ?? row.leadsCnt ?? row.metaLeads ?? 0
         return acc
       },
       { spend: 0, revenue: 0, conversions: 0, leads: 0 }
@@ -225,21 +243,23 @@ export class AnalyticsAPI {
       campaigns.items.map((row) => pickText(row, ["campaign_id", "campaign_key", "campaign_name"])).filter(Boolean)
     )
     const creativeIds = new Set(
-      creatives.items.map((row) => pickText(row, ["creative_id", "creative_name", "ad_id"])).filter(Boolean)
+      creatives.items
+        .map((row) => row.creativeId ?? row.adId ?? row.creativeName ?? row.creativeTitle ?? row.adName ?? "")
+        .filter(Boolean)
     )
 
     const sortedMetrics = [...topMetrics.items].sort((a, b) => {
-      const aDate = pickText(a, ["date_key", "date", "as_of_date"])
-      const bDate = pickText(b, ["date_key", "date", "as_of_date"])
+      const aDate = a.dateKey ?? a.asOfDate ?? ""
+      const bDate = b.dateKey ?? b.asOfDate ?? ""
       return aDate.localeCompare(bDate)
     })
 
     const firstMetric = sortedMetrics[0]
     const lastMetric = sortedMetrics[sortedMetrics.length - 1]
-    const firstSpend = firstMetric ? pickNumber(firstMetric, ["ads_spend_total", "spend"]) : 0
-    const lastSpend = lastMetric ? pickNumber(lastMetric, ["ads_spend_total", "spend"]) : 0
-    const firstRevenue = firstMetric ? pickNumber(firstMetric, ["crm_paid_sum", "paid_sum", "revenue"]) : 0
-    const lastRevenue = lastMetric ? pickNumber(lastMetric, ["crm_paid_sum", "paid_sum", "revenue"]) : 0
+    const firstSpend = firstMetric ? (firstMetric.adsSpendTotal ?? firstMetric.spend ?? 0) : 0
+    const lastSpend = lastMetric ? (lastMetric.adsSpendTotal ?? lastMetric.spend ?? 0) : 0
+    const firstRevenue = firstMetric ? (firstMetric.crmPaidSum ?? firstMetric.paidSum ?? firstMetric.revenue ?? 0) : 0
+    const lastRevenue = lastMetric ? (lastMetric.crmPaidSum ?? lastMetric.paidSum ?? lastMetric.revenue ?? 0) : 0
     const firstRoas = firstSpend > 0 ? firstRevenue / firstSpend : 0
     const lastRoas = lastSpend > 0 ? lastRevenue / lastSpend : 0
 
@@ -379,13 +399,18 @@ export class AnalyticsAPI {
    * Get conversion funnel
    */
   static async getConversionFunnel(dateRange: DateRange): Promise<any> {
-    const response = await fetchWidget("crm.funnel", toWidgetFilters(dateRange))
-    const totals = response.items.reduce(
+    const response = await fetchWidgetParsed("crm.funnel", toWidgetFilters(dateRange), crmFunnelRowSchema)
+    const totals = response.items.reduce<{
+      requests: number
+      leads: number
+      contracts: number
+      payments: number
+    }>(
       (acc, row) => {
-        acc.requests += pickNumber(row, ["requests_cnt", "requests"])
-        acc.leads += pickNumber(row, ["leads_cnt", "leads", "crm_leads"])
-        acc.contracts += pickNumber(row, ["contracts_cnt", "contracts", "crm_contracts"])
-        acc.payments += pickNumber(row, ["payments_cnt", "payments_sum", "paid_sum"])
+        acc.requests += row.requestsCnt ?? row.requests ?? 0
+        acc.leads += row.leadsCnt ?? row.leads ?? row.crmLeads ?? 0
+        acc.contracts += row.contractsCnt ?? row.contracts ?? row.crmContracts ?? 0
+        acc.payments += row.paymentsCnt ?? row.paymentsSum ?? row.paidSum ?? 0
         return acc
       },
       { requests: 0, leads: 0, contracts: 0, payments: 0 }
@@ -593,15 +618,25 @@ export class AnalyticsAPI {
     data: CreativeBurnout[]
     alerts: string[]
   }> {
-    const response = await fetchWidget("ads.meta_creative_fatigue_7d", { limit: 200 })
+    const response = await fetchWidgetParsed(
+      "ads.meta_creative_fatigue_7d",
+      { limit: 200 },
+      metaCreativeFatigue7dRowSchema
+    )
     const data = response.items.map((row) => ({
-      creative_id: pickText(row, ["creative_id"]),
-      creative_name: pickText(row, ["creative_name", "ad_name"]),
-      days_active: pickNumber(row, ["baseline_days"]),
-      initial_ctr: pickNumber(row, ["ctr_prev7d"]),
-      current_ctr: pickNumber(row, ["ctr_7d"]),
-      burnout_score: pickNumber(row, ["fatigue_score"]),
-      status: pickNumber(row, ["fatigue_score"]) >= 70 ? "burned_out" : pickNumber(row, ["fatigue_score"]) >= 40 ? "declining" : "fresh",
+      creative_id: row.creativeId ?? "",
+      creative_name: row.creativeName ?? row.adName ?? "",
+      days_active: row.baselineDays ?? 0,
+      initial_ctr: row.ctrPrev7d ?? 0,
+      current_ctr: row.ctr7d ?? 0,
+      burnout_score: row.fatigueScore ?? 0,
+      status: (
+        (row.fatigueScore ?? 0) >= 70
+          ? "burned_out"
+          : (row.fatigueScore ?? 0) >= 40
+            ? "declining"
+            : "fresh"
+      ) as CreativeBurnout["status"],
     }))
     return {
       status: "success",
@@ -726,11 +761,17 @@ export class AnalyticsAPI {
   /**
    * Get marketing campaigns data
    */
-  static async getMarketingCampaigns(dateRange?: DateRange, platform?: string, campaignKey?: string): Promise<any> {
+  static async getMarketingCampaigns(
+    dateRange?: DateRange,
+    platform?: string,
+    campaignKey?: string,
+    cityId?: string | number
+  ): Promise<any> {
     const params: any = {}
     if (dateRange?.start_date) params.start_date = dateRange.start_date
     if (dateRange?.end_date) params.end_date = dateRange.end_date
     if (platform) params.platform = platform
+    if (cityId && cityId !== "all") params.id_city = cityId
 
     const response = await this.fetchAnalytics(
       "/analytics/widgets/campaigns.table",
@@ -756,6 +797,11 @@ export class AnalyticsAPI {
         ctr_pct: ctrPct,
         cpc: Number(row.cpc ?? 0),
         cpm: Number(row.cpm ?? 0),
+        leads: Number(row.leads ?? row.leads_cnt ?? row.platform_leads ?? 0),
+        contracts: Number(row.contracts ?? row.contracts_cnt ?? 0),
+        revenue: Number(row.revenue ?? row.revenue_sum ?? row.revenue_total_cost ?? 0),
+        payments: Number(row.payments_sum ?? row.paid_sum ?? 0),
+        payback_rate: Number(row.payback_rate ?? 0),
       }
     })
 
@@ -768,6 +814,10 @@ export class AnalyticsAPI {
         impressions_7d: 0,
         clicks_7d: 0,
         cost_7d: 0,
+        leads_7d: 0,
+        contracts_7d: 0,
+        revenue_7d: 0,
+        payments_7d: 0,
         avg_ctr_7d: 0,
         avg_cpc_7d: 0,
         avg_cpm_7d: 0,
@@ -777,6 +827,10 @@ export class AnalyticsAPI {
       entry.impressions_7d += row.impressions
       entry.clicks_7d += row.clicks
       entry.cost_7d += row.cost
+      entry.leads_7d += row.leads
+      entry.contracts_7d += row.contracts
+      entry.revenue_7d += row.revenue
+      entry.payments_7d += row.payments
       if (row.date) {
         entry.first_seen = entry.first_seen ? (entry.first_seen < row.date ? entry.first_seen : row.date) : row.date
         entry.last_active_date = entry.last_active_date
@@ -792,6 +846,10 @@ export class AnalyticsAPI {
       impressions_7d: entry.impressions_7d,
       clicks_7d: entry.clicks_7d,
       cost_7d: entry.cost_7d,
+      leads_7d: entry.leads_7d,
+      contracts_7d: entry.contracts_7d,
+      revenue_7d: entry.revenue_7d,
+      payments_7d: entry.payments_7d,
       avg_ctr_7d: entry.impressions_7d > 0 ? (entry.clicks_7d / entry.impressions_7d) * 100 : 0,
       avg_cpc_7d: entry.clicks_7d > 0 ? entry.cost_7d / entry.clicks_7d : 0,
       avg_cpm_7d: entry.impressions_7d > 0 ? (entry.cost_7d / entry.impressions_7d) * 1000 : 0,

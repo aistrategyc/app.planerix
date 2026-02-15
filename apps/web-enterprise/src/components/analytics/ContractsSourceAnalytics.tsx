@@ -8,32 +8,11 @@
 import React, { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import {
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-} from "recharts"
-import {
-  Users,
-  DollarSign,
-  TrendingUp,
-  Calendar,
-  Globe,
-  Facebook,
-  Instagram as InstagramIcon,
-  MessageCircle,
-} from "lucide-react"
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line } from "recharts"
+import { Users, DollarSign, TrendingUp, Calendar, Globe, Facebook, Instagram as InstagramIcon, MessageCircle } from "lucide-react"
 import { chartTooltipStyle, chartTooltipItemStyle } from "@/components/analytics/chart-theme"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
+import { formatCurrency, formatPercent } from "@/app/analytics/utils/formatters"
 
 interface ContractsBySource {
   source: string
@@ -75,9 +54,8 @@ const SOURCE_ICONS: Record<string, any> = {
   telegram: MessageCircle,
 }
 
-const formatCurrency = (value: number) => `₴${(value / 1000).toFixed(1)}K`
-const formatNumber = (value: number) => value.toFixed(0)
-const formatPercent = (value: number) => `${value.toFixed(1)}%`
+const formatCurrencyCompact = (value: number) => formatCurrency(value, { compact: true, compactDigits: 1 })
+const formatPercentValue = (value: number) => formatPercent(value, { digits: 1, assumeRatio: false })
 
 const getSourceLabel = (source: string): string => {
   const labels: Record<string, string> = {
@@ -99,14 +77,14 @@ const getSourceDescription = (source: string, data: ContractsBySource): string =
     case "organic":
       return `Клиенты пришли самостоятельно через поиск, рекомендации, прямой переход. Конверсия: ${data.conversion_rate.toFixed(1)}%`
     case "event":
-      return `Клиенты с мероприятий, выставок, конференций. Высокое качество лидов, средний чек: ${formatCurrency(data.avg_contract_value)}`
+      return `Клиенты с мероприятий, выставок, конференций. Высокое качество лидов, средний чек: ${formatCurrencyCompact(data.avg_contract_value)}`
     case "facebook":
     case "instagram":
       return `Платный трафик из ${source}. ROAS можно отследить через spend данные. Контракты: ${data.contracts}`
     case "google":
       return `Платный поиск Google Ads. Контракты: ${data.contracts}, конверсия: ${data.conversion_rate.toFixed(1)}%`
     default:
-      return `Источник: ${source}, Контракты: ${data.contracts}, Revenue: ${formatCurrency(data.revenue)}`
+      return `Источник: ${source}, Контракты: ${data.contracts}, Revenue: ${formatCurrencyCompact(data.revenue)}`
   }
 }
 
@@ -222,7 +200,7 @@ export function ContractsSourceAnalytics({
           </div>
           <div className="flex justify-between gap-4">
             <span className="text-slate-600" style={chartTooltipItemStyle}>Revenue:</span>
-            <span className="font-bold" style={chartTooltipItemStyle}>{formatCurrency(data.revenue)}</span>
+            <span className="font-bold" style={chartTooltipItemStyle}>{formatCurrencyCompact(data.revenue)}</span>
           </div>
         </div>
       </div>
@@ -245,7 +223,7 @@ export function ContractsSourceAnalytics({
           </div>
           <div className="text-center">
             <div className="text-xs text-slate-500 mb-1">Total Revenue</div>
-            <div className="text-2xl font-bold text-purple-600">{formatCurrency(totalRevenue)}</div>
+            <div className="text-2xl font-bold text-purple-600">{formatCurrencyCompact(totalRevenue)}</div>
           </div>
           <div className="text-center">
             <div className="text-xs text-slate-500 mb-1">Total Leads</div>
@@ -253,7 +231,7 @@ export function ContractsSourceAnalytics({
           </div>
           <div className="text-center">
             <div className="text-xs text-slate-500 mb-1">Avg Conversion</div>
-            <div className="text-2xl font-bold text-orange-600">{formatPercent(avgConversion)}</div>
+            <div className="text-2xl font-bold text-orange-600">{formatPercentValue(avgConversion)}</div>
           </div>
         </div>
       </CardHeader>
@@ -262,7 +240,7 @@ export function ContractsSourceAnalytics({
         {/* Pie Chart */}
         <div>
           <h3 className="text-sm font-semibold mb-3">Contract Distribution by Source</h3>
-          <ResponsiveContainer width="100%" height={300}>
+          <SafeResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
                 data={pieData}
@@ -283,7 +261,7 @@ export function ContractsSourceAnalytics({
               </Pie>
               <Tooltip content={<CustomPieTooltip />} />
             </PieChart>
-          </ResponsiveContainer>
+          </SafeResponsiveContainer>
         </div>
 
         {/* Detailed Source Cards */}
@@ -328,7 +306,7 @@ export function ContractsSourceAnalytics({
                             </div>
                             <div>
                               <div className="text-slate-500">Revenue</div>
-                              <div className="font-bold text-lg">{formatCurrency(item.revenue)}</div>
+                              <div className="font-bold text-lg">{formatCurrencyCompact(item.revenue)}</div>
                             </div>
                             <div>
                               <div className="text-slate-500">Leads</div>
@@ -336,11 +314,11 @@ export function ContractsSourceAnalytics({
                             </div>
                             <div>
                               <div className="text-slate-500">Conv. Rate</div>
-                              <div className="font-bold text-lg">{formatPercent(item.conversion_rate)}</div>
+                              <div className="font-bold text-lg">{formatPercentValue(item.conversion_rate)}</div>
                             </div>
                             <div>
                               <div className="text-slate-500">Avg Value</div>
-                              <div className="font-bold text-lg">{formatCurrency(item.avg_contract_value)}</div>
+                              <div className="font-bold text-lg">{formatCurrencyCompact(item.avg_contract_value)}</div>
                             </div>
                           </div>
 
@@ -409,7 +387,7 @@ export function ContractsSourceAnalytics({
                       </span>
                       , conversion rate:{" "}
                       <span className="font-bold">
-                        {formatPercent(sortedData.find((s) => s.source === "organic")?.conversion_rate || 0)}
+                        {formatPercentValue(sortedData.find((s) => s.source === "organic")?.conversion_rate || 0)}
                       </span>
                     </div>
                   </div>
@@ -425,7 +403,7 @@ export function ContractsSourceAnalytics({
                       </span>
                       , avg contract:{" "}
                       <span className="font-bold">
-                        {formatCurrency(sortedData.find((s) => s.source === "event")?.avg_contract_value || 0)}
+                        {formatCurrencyCompact(sortedData.find((s) => s.source === "event")?.avg_contract_value || 0)}
                       </span>
                     </div>
                   </div>
@@ -443,7 +421,7 @@ export function ContractsSourceAnalytics({
                       </span>
                       , revenue:{" "}
                       <span className="font-bold">
-                        {formatCurrency(
+                        {formatCurrencyCompact(
                           (sortedData.find((s) => s.source === "facebook")?.revenue || 0) +
                             (sortedData.find((s) => s.source === "instagram")?.revenue || 0)
                         )}

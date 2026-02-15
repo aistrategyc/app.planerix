@@ -1,3 +1,5 @@
+# ruff: noqa: F401
+
 from .api_keys import APIKey
 from .audit import EventLog
 from .change_logs import ChangeLog

@@ -111,6 +111,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "info"
     API_PREFIX: str = "/api"
+    # Legacy/direct analytics endpoints (non-widget APIs). Keep disabled by default to reduce API surface.
+    ENABLE_LEGACY_ANALYTICS_ROUTES: bool = False
 
     # ---- CORS ----
     # IMPORTANT: Cannot use "*" with credentials=True, must specify exact origins

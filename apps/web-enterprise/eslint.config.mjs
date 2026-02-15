@@ -11,6 +11,21 @@ const compat = new FlatCompat({
 
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
+  {
+    // Temporary relaxation for analytics-heavy surfaces while we migrate to parsed DTOs.
+    files: [
+      "src/app/analytics/**/*.{ts,tsx}",
+      "src/app/attribution/**/*.{ts,tsx}",
+      "src/components/analytics/**/*.{ts,tsx}",
+      "src/lib/api/analytics*.ts",
+      "src/lib/api/attribution*.ts",
+      "src/hooks/useAnalytics*.ts",
+    ],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": "warn",
+    },
+  },
 ];
 
 export default eslintConfig;

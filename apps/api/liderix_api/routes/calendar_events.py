@@ -11,7 +11,7 @@ import logging
 
 from fastapi import (
     APIRouter, Depends, HTTPException, status, Response, Request,
-    Query, BackgroundTasks
+    Query
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func, and_, or_, delete as sql_delete
@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload, noload
 from sqlalchemy.exc import IntegrityError
 
 from liderix_api.db import get_async_session
-from liderix_api.models.calendar import CalendarEvent, EventAttendee, Calendar
+from liderix_api.models.calendar import CalendarEvent, EventAttendee
 from liderix_api.models.users import User
 from liderix_api.models.memberships import Membership, MembershipStatus
 from liderix_api.models.tasks import Task
@@ -28,7 +28,7 @@ from liderix_api.models.okrs import Objective, ObjectiveStatus
 from liderix_api.schemas.calendar import (
     CalendarEventCreate, CalendarEventUpdate, CalendarEventResponse,
     CalendarEventListResponse, EventAttendeeUpdate, EventAttendeeResponse,
-    EventQueryParams, EventOperationResponse, BulkEventStatusUpdate,
+    EventOperationResponse, BulkEventStatusUpdate,
     BulkEventDelete, RitualBootstrapResponse
 )
 from liderix_api.enums import EventType, EventStatus, RecurrenceType
@@ -429,7 +429,7 @@ async def list_events(
         access_filters.append(
             and_(
                 CalendarEvent.org_id.in_(user_org_ids),
-                CalendarEvent.is_private == False
+                CalendarEvent.is_private.is_(False)
             )
         )
 
@@ -749,7 +749,7 @@ async def get_event_attendees(
     current_user: User = Depends(get_current_user),
 ):
     """Get event attendees"""
-    event = await _get_event_with_access(session, event_id, current_user, "read")
+    await _get_event_with_access(session, event_id, current_user, "read")
 
     attendees = await session.scalars(
         select(EventAttendee)

@@ -6,29 +6,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import ProtectedRoute from "@/components/auth/ProtectedRoute"
 import AIChat from "@/components/ai/AIChat"
-import {
-  AgentSummary,
-  fetchAgentRegistry,
-  fetchInsights,
-  WidgetRow,
-} from "@/lib/api/analytics-widgets"
-import {
-  acceptAIActionRequest,
-  fetchAIActionRequests,
-  rejectAIActionRequest,
-  AIActionRequest,
-} from "@/lib/api/ai"
-import {
-  AlertTriangle,
-  Clock,
-  Database,
-  Megaphone,
-  RefreshCw,
-  Radar,
-  Sparkles,
-  Target,
-  TrendingUp,
-} from "lucide-react"
+import { AgentSummary, fetchAgentRegistry, fetchInsights, InsightRow } from "@/lib/api/analytics-widgets"
+import { acceptAIActionRequest, fetchAIActionRequests, rejectAIActionRequest, AIActionRequest } from "@/lib/api/ai"
+import { AlertTriangle, Clock, Database, Megaphone, RefreshCw, Radar, Sparkles, Target, TrendingUp } from "lucide-react"
 import { PageHeader } from "@/components/layout/PageHeader"
 
 type AgentDefinition = {
@@ -108,10 +88,17 @@ const getSeverityLabel = (severity?: string | null) => {
   return "Info"
 }
 
+const getRecordFieldString = (record: unknown, key: string): string | null => {
+  if (!record || typeof record !== "object") return null
+  const value = (record as Record<string, unknown>)[key]
+  if (value === null || value === undefined) return null
+  return typeof value === "string" ? value : String(value)
+}
+
 function AIHomePageContentContent() {
   const [agentSummary, setAgentSummary] = useState<AgentSummary[]>([])
   const [activeAgentKey, setActiveAgentKey] = useState<string | null>(null)
-  const [aiInsights, setAiInsights] = useState<WidgetRow[]>([])
+  const [aiInsights, setAiInsights] = useState<InsightRow[]>([])
   const [actionRequests, setActionRequests] = useState<AIActionRequest[]>([])
   const [loading, setLoading] = useState(false)
   const [isLoadingAgents, setIsLoadingAgents] = useState(false)
@@ -322,9 +309,12 @@ function AIHomePageContentContent() {
                           </Badge>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          {insight["city_name"]
-                            ? `Місто: ${String(insight["city_name"])}`
-                            : "Місто: —"}{" "}
+                          {(() => {
+                            const city =
+                              getRecordFieldString(insight.metrics_json, "city_name") ??
+                              getRecordFieldString(insight.evidence_ref, "city_name")
+                            return city ? `Місто: ${city}` : "Місто: —"
+                          })()}{" "}
                           · {insight.valid_from ? String(insight.valid_from) : "дата неизвестна"}
                         </div>
                         <p className="text-sm mt-2 text-muted-foreground">

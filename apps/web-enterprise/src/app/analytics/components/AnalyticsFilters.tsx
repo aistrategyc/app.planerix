@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils"
 export type AnalyticsFiltersValue = {
   dateRange: { from?: Date; to?: Date }
   cityId: string
-  platform: string
   product?: string
   branch?: string
   source?: string
@@ -22,8 +21,7 @@ export type AnalyticsFiltersValue = {
 type AnalyticsFiltersProps = {
   value: AnalyticsFiltersValue
   onDateChange: (value: { from?: Date; to?: Date }) => void
-  onCityChange: (value: string) => void
-  onPlatformChange: (value: string) => void
+  onCityChange?: (value: string) => void
   onProductChange?: (value: string) => void
   onBranchChange?: (value: string) => void
   onSourceChange?: (value: string) => void
@@ -32,7 +30,7 @@ type AnalyticsFiltersProps = {
   isLoading?: boolean
   showDateRange?: boolean
   showCity?: boolean
-  showPlatform?: boolean
+  allowAllCities?: boolean
   showProduct?: boolean
   showBranch?: boolean
   showSource?: boolean
@@ -47,7 +45,6 @@ export function AnalyticsFilters({
   value,
   onDateChange,
   onCityChange,
-  onPlatformChange,
   onProductChange,
   onBranchChange,
   onSourceChange,
@@ -56,7 +53,7 @@ export function AnalyticsFilters({
   isLoading,
   showDateRange = true,
   showCity = true,
-  showPlatform = true,
+  allowAllCities = true,
   showProduct = false,
   showBranch = false,
   showSource = false,
@@ -73,40 +70,42 @@ export function AnalyticsFilters({
   const handleProduct = onProductChange ?? (() => {})
   const handleBranch = onBranchChange ?? (() => {})
   const handleSource = onSourceChange ?? (() => {})
-  const controlHeight = compact ? "h-8" : "h-7"
+  const handleCityChange = onCityChange ?? (() => {})
+  const controlHeight = "h-[var(--form-height)]"
   const dateWidth = compact ? "w-full sm:w-[210px]" : "w-[160px]"
   const cityWidth = compact ? "w-full sm:w-[160px]" : "w-[140px]"
-  const platformWidth = compact ? "w-full sm:w-[150px]" : "w-[130px]"
   const inputWidth = compact ? "w-full sm:w-[180px]" : "w-[150px]"
+  const densityClass = compact ? "form-compact" : ""
 
   const formatShortDate = (date?: Date) =>
-    date ? date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) : ""
+    date ? date.toLocaleDateString("en-US", { day: "2-digit", month: "short" }) : ""
 
   const activeFilters = [
     value.dateRange?.from && value.dateRange?.to
-      ? `Период: ${formatShortDate(value.dateRange.from)} - ${formatShortDate(value.dateRange.to)}`
+      ? `Period: ${formatShortDate(value.dateRange.from)} - ${formatShortDate(value.dateRange.to)}`
       : value.dateRange?.from
-      ? `Дата: ${formatShortDate(value.dateRange.from)}`
+      ? `Date: ${formatShortDate(value.dateRange.from)}`
       : null,
-    value.cityId !== "all" ? `Місто: ${cities.find((c) => String(c.id_city) === value.cityId)?.city_name ?? value.cityId}` : null,
-    value.platform !== "all" ? `Платформа: ${value.platform}` : null,
-    safeProduct ? `Продукт: ${safeProduct}` : null,
-    safeBranch ? `Філія: ${safeBranch}` : null,
-    safeSource ? `Джерело: ${safeSource}` : null,
+    value.cityId !== "all"
+      ? `City: ${cities.find((c) => String(c.id_city) === value.cityId)?.city_name ?? value.cityId}`
+      : null,
+    safeProduct ? `Product: ${safeProduct}` : null,
+    safeBranch ? `Branch: ${safeBranch}` : null,
+    safeSource ? `Source: ${safeSource}` : null,
   ].filter(Boolean) as string[]
 
   return (
     <div className={cn(sticky ? "lg:sticky lg:top-[92px] lg:z-20" : "", className)}>
       <Card className="border-muted/70 shadow-sm glass-panel">
-        <CardContent className="flex flex-col gap-3 py-3">
+        <CardContent className={cn("flex flex-col gap-3 py-3", densityClass)}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               <SlidersHorizontal className="h-3.5 w-3.5" />
-              Фільтри
+              Filters
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {activeFilters.length === 0 ? (
-                <span className="text-xs text-muted-foreground">Немає активних фільтрів</span>
+                <span className="text-xs text-muted-foreground">No active filters</span>
               ) : (
                 activeFilters.map((item) => (
                   <Badge key={item} variant="outline" className="text-[10px]">
@@ -122,12 +121,12 @@ export function AnalyticsFilters({
               <DateRangePicker value={value.dateRange} onChange={onDateChange} className={`${controlHeight} ${dateWidth}`} />
             )}
             {showCity && (
-              <Select value={value.cityId} onValueChange={onCityChange}>
+              <Select value={value.cityId} onValueChange={handleCityChange}>
                 <SelectTrigger className={`${controlHeight} ${cityWidth}`}>
-                  <SelectValue placeholder="Місто" />
+                  <SelectValue placeholder="City" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Усі міста</SelectItem>
+                  {allowAllCities && <SelectItem value="all">All cities</SelectItem>}
                   {cities.map((city) => (
                     <SelectItem key={city.id_city} value={String(city.id_city)}>
                       {city.city_name}
@@ -136,24 +135,11 @@ export function AnalyticsFilters({
                 </SelectContent>
               </Select>
             )}
-            {showPlatform && (
-              <Select value={value.platform} onValueChange={onPlatformChange}>
-                <SelectTrigger className={`${controlHeight} ${platformWidth}`}>
-                  <SelectValue placeholder="Платформа" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Усі платформи</SelectItem>
-                  <SelectItem value="meta">Meta</SelectItem>
-                  <SelectItem value="gads">Google Ads</SelectItem>
-                  <SelectItem value="offline">Offline</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
             {showProduct && (
               <Input
                 value={safeProduct}
                 onChange={(event) => handleProduct(event.target.value)}
-                placeholder="Продукт"
+                placeholder="Product"
                 className={`${controlHeight} ${inputWidth}`}
               />
             )}
@@ -161,24 +147,24 @@ export function AnalyticsFilters({
               <Input
                 value={safeBranch}
                 onChange={(event) => handleBranch(event.target.value)}
-                placeholder="Філія"
-                className={`${controlHeight} ${platformWidth}`}
+                placeholder="Branch"
+                className={`${controlHeight} ${inputWidth}`}
               />
             )}
             {showSource && (
               <Input
                 value={safeSource}
                 onChange={(event) => handleSource(event.target.value)}
-                placeholder="Джерело"
+                placeholder="Source"
                 className={`${controlHeight} ${inputWidth}`}
               />
             )}
             {extraControls}
             <Button variant="secondary" size="sm" className={`${controlHeight} px-3`} onClick={onApply} disabled={isLoading}>
-              Застосувати
+              Apply
             </Button>
             <Button variant="ghost" size="sm" className={`${controlHeight} px-3`} onClick={onReset} disabled={isLoading}>
-              Скинути
+              Reset
             </Button>
           </div>
         </CardContent>

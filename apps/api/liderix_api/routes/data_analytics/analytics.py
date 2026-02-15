@@ -4,7 +4,7 @@ Uses v8 views: v8_campaigns_daily, v8_platform_daily, v8_attribution_summary
 Date: October 19, 2025
 """
 import logging
-from typing import List, Optional
+from typing import Optional
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession

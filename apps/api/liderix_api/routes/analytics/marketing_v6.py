@@ -1,5 +1,5 @@
 """
-Marketing analytics - SEM-based views for Itstep.
+Marketing analytics - sem_ui-based views for Itstep.
 """
 
 from __future__ import annotations
@@ -60,13 +60,13 @@ async def get_marketing_overview(
     Return marketing overview datasets: campaigns, channel mix, spend vs contracts.
     """
 
-    date_from, date_to = await _resolve_date_range(session, date_from, date_to, "sem.ads_campaigns_daily")
+    date_from, date_to = await _resolve_date_range(session, date_from, date_to, "sem_ui.ads_campaigns_daily_city")
 
     # Campaigns aggregated across date range
     campaign_filters = ["date_key >= :date_from", "date_key <= :date_to"]
     campaign_params: dict[str, Any] = {"date_from": date_from, "date_to": date_to, "limit": limit}
     if city_id is not None:
-        campaign_filters.append("id_city = :city_id")
+        campaign_filters.append("city_id = :city_id")
         campaign_params["city_id"] = city_id
     if platform:
         campaign_filters.append("platform = :platform")
@@ -94,7 +94,7 @@ async def get_marketing_overview(
             THEN (SUM(spend) / SUM(impressions)) * 1000
             ELSE NULL
           END as cpm
-        FROM sem.ads_campaigns_daily
+        FROM sem_ui.ads_campaigns_daily_city
         WHERE {' AND '.join(campaign_filters)}
         GROUP BY platform, campaign_id, campaign_name
         ORDER BY spend DESC NULLS LAST
@@ -114,7 +114,7 @@ async def get_marketing_overview(
     channel_filters = ["date_key >= :date_from", "date_key <= :date_to"]
     channel_params: dict[str, Any] = {"date_from": date_from, "date_to": date_to}
     if city_id is not None:
-        channel_filters.append("id_city = :city_id")
+        channel_filters.append("city_id = :city_id")
         channel_params["city_id"] = city_id
 
     channel_query = text(
@@ -123,9 +123,9 @@ async def get_marketing_overview(
           channel,
           SUM(spend) as spend,
           SUM(contracts_cnt) as contracts_cnt,
-          AVG(spend_share) as spend_share,
-          AVG(contracts_share) as contracts_share
-        FROM sem.channel_mix_daily_city
+          AVG(spend_share_pct) as spend_share,
+          AVG(contracts_share_pct) as contracts_share
+        FROM sem_ui.ads_channel_mix_daily
         WHERE {' AND '.join(channel_filters)}
         GROUP BY channel
         ORDER BY spend DESC NULLS LAST
@@ -137,23 +137,31 @@ async def get_marketing_overview(
     svc_filters = ["date_key >= :date_from", "date_key <= :date_to"]
     svc_params: dict[str, Any] = {"date_from": date_from, "date_to": date_to}
     if city_id is not None:
-        svc_filters.append("id_city = :city_id")
+        svc_filters.append("city_id = :city_id")
         svc_params["city_id"] = city_id
 
     svc_query = text(
         f"""
         SELECT
           date_key,
-          city_name,
-          contracts_all,
-          contracts_meta,
-          contracts_gads,
-          contracts_offline,
-          spend_all,
-          spend_meta,
-          spend_gads
-        FROM sem.ad_spend_vs_contracts_daily_city
+          NULL::text AS city_name,
+          SUM(contracts_cnt) AS contracts_all,
+          SUM(CASE WHEN lower(platform) IN ('meta', 'facebook', 'fb') THEN contracts_cnt ELSE 0 END) AS contracts_meta,
+          SUM(CASE WHEN lower(platform) IN ('gads', 'google', 'googleads') THEN contracts_cnt ELSE 0 END) AS contracts_gads,
+          SUM(
+            CASE
+              WHEN lower(platform) IN ('meta', 'facebook', 'fb', 'gads', 'google', 'googleads') THEN 0
+              ELSE contracts_cnt
+            END
+          ) AS contracts_offline,
+          SUM(spend) AS spend_all,
+          SUM(CASE WHEN lower(platform) IN ('meta', 'facebook', 'fb') THEN spend ELSE 0 END) AS spend_meta,
+          SUM(CASE WHEN lower(platform) IN ('gads', 'google', 'googleads') THEN spend ELSE 0 END) AS spend_gads,
+          SUM(revenue_sum) AS revenue_all,
+          SUM(payments_sum) AS payments_all
+        FROM sem_ui.ad_spend_vs_contracts_daily_city
         WHERE {' AND '.join(svc_filters)}
+        GROUP BY date_key
         ORDER BY date_key ASC
         """
     )

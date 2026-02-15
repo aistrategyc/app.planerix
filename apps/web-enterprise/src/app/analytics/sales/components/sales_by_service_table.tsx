@@ -22,15 +22,23 @@ interface SalesByServiceTableProps {
 export function SalesByServiceTable({ data, limit = 10 }: SalesByServiceTableProps) {
   const [showAll, setShowAll] = useState(false)
 
+  const getAvgFirstPayment = (row: ServiceRow) => {
+    const value = row.total_first_sum ?? 0
+    if (value > 0) return value
+    return row.contract_count > 0 ? row.total_revenue / row.contract_count : 0
+  }
+
   const aggregatedMetrics = useMemo(() => {
     const totalRevenue = data.reduce((acc, row) => acc + (row.total_revenue ?? 0), 0)
     const totalContracts = data.reduce((acc, row) => acc + (row.contract_count ?? 0), 0)
-    const totalFirstSum = data.reduce((acc, row) => acc + (row.total_first_sum ?? 0), 0)
+    const weightedFirstPayment = data.reduce(
+      (acc, row) => acc + getAvgFirstPayment(row) * (row.contract_count ?? 0),
+      0
+    )
     const avgRevenuePerContract = totalContracts > 0 ? Math.round(totalRevenue / totalContracts) : 0
-    const conversionRate =
-      totalRevenue > 0 ? ((totalFirstSum / totalRevenue) * 100).toFixed(1) : "0.0"
+    const avgFirstPayment = totalContracts > 0 ? Math.round(weightedFirstPayment / totalContracts) : 0
 
-    return { totalRevenue, totalContracts, totalFirstSum, avgRevenuePerContract, conversionRate }
+    return { totalRevenue, totalContracts, avgRevenuePerContract, avgFirstPayment }
   }, [data])
 
   const { tableRows, othersRow, shownCount } = useMemo(() => {
@@ -53,7 +61,15 @@ export function SalesByServiceTable({ data, limit = 10 }: SalesByServiceTablePro
             service_name: "Прочие",
             contract_count: tail.reduce((acc, r) => acc + (r.contract_count ?? 0), 0),
             total_revenue: tail.reduce((acc, r) => acc + (r.total_revenue ?? 0), 0),
-            total_first_sum: tail.reduce((acc, r) => acc + (r.total_first_sum ?? 0), 0),
+            total_first_sum: (() => {
+              const contracts = tail.reduce((acc, r) => acc + (r.contract_count ?? 0), 0)
+              if (contracts <= 0) return 0
+              const weighted = tail.reduce(
+                (acc, r) => acc + getAvgFirstPayment(r) * (r.contract_count ?? 0),
+                0
+              )
+              return weighted / contracts
+            })(),
           }
         : null
 
@@ -70,9 +86,9 @@ export function SalesByServiceTable({ data, limit = 10 }: SalesByServiceTablePro
       {/* KPI карточки сверху (как было) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Середня конверсія"
-          value={`${aggregatedMetrics.conversionRate}%`}
-          subtitle="(перший платіж / виручка)"
+          title="Середній перший платіж"
+          value={`${aggregatedMetrics.avgFirstPayment.toLocaleString("uk-UA")} ₴`}
+          subtitle="(оцінка, середнє по контрактах)"
         />
         <MetricCard
           title="Загальна виручка"
@@ -97,7 +113,7 @@ export function SalesByServiceTable({ data, limit = 10 }: SalesByServiceTablePro
                 <TableHead className="w-[40%]">Послуга</TableHead>
                 <TableHead className="text-right">Контракти</TableHead>
                 <TableHead className="text-right">Виручка</TableHead>
-                <TableHead className="text-right">Перший платіж</TableHead>
+                <TableHead className="text-right">Сер. перший платіж</TableHead>
                 <TableHead className="text-right">Доля</TableHead>
               </TableRow>
             </TableHeader>
@@ -105,6 +121,7 @@ export function SalesByServiceTable({ data, limit = 10 }: SalesByServiceTablePro
               {tableRows.length > 0 ? (
                 tableRows.map((row) => {
                   const share = revenueShare(row.total_revenue)
+                  const avgFirstPayment = getAvgFirstPayment(row)
                   return (
                     <TableRow
                       key={row.service_id}
@@ -125,7 +142,7 @@ export function SalesByServiceTable({ data, limit = 10 }: SalesByServiceTablePro
                       </TableCell>
 
                       <TableCell className="text-right tabular-nums">
-                        {row.total_first_sum?.toLocaleString("uk-UA")} ₴
+                        {avgFirstPayment.toLocaleString("uk-UA")} ₴
                       </TableCell>
 
                       <TableCell className="text-right">
@@ -190,7 +207,7 @@ export function SalesByServiceTable({ data, limit = 10 }: SalesByServiceTablePro
                     {aggregatedMetrics.totalRevenue.toLocaleString("uk-UA")} ₴
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {aggregatedMetrics.totalFirstSum.toLocaleString("uk-UA")} ₴
+                    {aggregatedMetrics.avgFirstPayment.toLocaleString("uk-UA")} ₴
                   </TableCell>
                   <TableCell className="text-right tabular-nums">100%</TableCell>
                 </TableRow>

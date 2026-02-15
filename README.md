@@ -8,8 +8,8 @@
 ## Репозиторий
 
 Основные директории:
-- `n8n/` — web‑enterprise (Next.js App Router)
-- `n8n-api/` — FastAPI backend
+- `apps/web-enterprise/` — web‑enterprise (Next.js App Router)
+- `apps/api/` — FastAPI backend
 - `apps/planerix/` — marketing/landing
 - `infra/` — observability (Prometheus/Grafana/Loki/Promtail)
 - `scripts/` — сервисные скрипты

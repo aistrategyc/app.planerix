@@ -1,13 +1,7 @@
 // hooks/useCompany.ts
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '@/components/ui/use-toast'
-import {
-  CompanyAPI,
-  Company,
-  CompanyStats,
-  CompanySettings,
-  Department,
-} from '@/lib/api/company'
+import { CompanyAPI, Company, CompanyStats, CompanySettings, Department } from '@/lib/api/company'
 import type { TeamMember } from '@/lib/api/profile'
 
 // ---- helpers ---------------------------------------------------------------

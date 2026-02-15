@@ -1,5 +1,4 @@
 # apps/api/liderix_api/models/mixins.py
-from datetime import datetime
 from sqlalchemy import Column, DateTime, Boolean, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy import ForeignKey

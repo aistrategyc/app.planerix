@@ -28,7 +28,6 @@ import logging
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from liderix_api.models.users import User
 from liderix_api.models.organization import Organization
@@ -36,7 +35,7 @@ from liderix_api.models.projects import Project
 from liderix_api.models.tasks import Task
 from liderix_api.models.calendar import Calendar, CalendarEvent
 from liderix_api.models.okrs import Objective, KeyResult
-from liderix_api.models.kpi import KPIIndicator, KPIMeasurement
+from liderix_api.models.kpi import KPIIndicator
 from liderix_api.models.event_links import EventLink, LinkType
 from liderix_api.enums import (
     TaskStatus,
@@ -112,7 +111,7 @@ class DefaultTemplate(OnboardingTemplate):
         kpis = await self._create_sample_kpis()
 
         # 7. Create event links
-        links = await self._create_sample_links(events, tasks, key_results, kpis)
+        await self._create_sample_links(events, tasks, key_results, kpis)
 
         await self.session.commit()
 

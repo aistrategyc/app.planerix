@@ -2,8 +2,6 @@
 from fastapi import APIRouter, HTTPException
 import asyncpg
 import os
-from typing import Dict, Any
-import json
 import logging
 
 router = APIRouter(prefix="/test-analytics", tags=["Test Analytics"])
@@ -23,7 +21,7 @@ async def get_itstep_connection():
         raise HTTPException(status_code=500, detail="Database connection failed")
 
 @router.get("/connection-test")
-async def test_connection():
+async def connection_test():
     """Test connection to ITstep database"""
     try:
         conn = await get_itstep_connection()
@@ -68,7 +66,7 @@ async def list_tables():
         raise HTTPException(status_code=500, detail=f"Failed to list tables: {str(e)}")
 
 @router.get("/test-permissions")
-async def test_permissions():
+async def permissions_test():
     """Test database permissions for different schemas"""
     try:
         conn = await get_itstep_connection()

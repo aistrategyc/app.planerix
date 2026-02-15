@@ -5,7 +5,6 @@ Onboarding API routes for new user setup
 from __future__ import annotations
 
 from typing import Dict, Any
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -127,7 +126,7 @@ async def create_onboarding_data(
                 "status": 400
             }
         )
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={

@@ -29,7 +29,6 @@ from liderix_api.models.tasks import Task
 from liderix_api.models.users import User
 from liderix_api.schemas.ai import (
     AIActionRequestDecision,
-    AIActionRequestItem,
     AIActionRequestList,
     AIAutoActionItem,
     AIAutoActionRequest,

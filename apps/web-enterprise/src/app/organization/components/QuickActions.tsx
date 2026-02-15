@@ -1,11 +1,6 @@
 "use client";
 
-import { 
-  UserPlus, 
-  Plus, 
-  Download, 
-  BarChart3
-} from "lucide-react";
+import { UserPlus, Plus, Download, BarChart3 } from "lucide-react";
 
 interface QuickActionsProps {
   onInviteMember: () => void;

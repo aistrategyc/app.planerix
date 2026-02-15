@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
-import { ResponsiveContainer, ResponsiveContainerProps } from "recharts"
+import { ResponsiveContainer, ResponsiveContainerProps } from 'recharts'
 
 type SafeResponsiveContainerProps = ResponsiveContainerProps & {
   wrapperClassName?: string

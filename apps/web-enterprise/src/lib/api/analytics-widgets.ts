@@ -1,4 +1,12 @@
 import { api } from "./config"
+import { z } from "zod"
+import {
+  addCamelAccessorsUnknownRecordShallow,
+  camelizeUnknownRecordShallow,
+  parseWidgetRowsSafe,
+  type WidgetParseIssue,
+} from "@/lib/widgets/widgetParsing"
+import { getWidgetRowSchema } from "@/lib/widgets/widgetSchemas"
 
 export interface WidgetFilters {
   start_date?: string
@@ -28,6 +36,7 @@ export interface WidgetFilters {
 }
 
 export type WidgetRow = Record<string, unknown>
+export type CamelWidgetRow = Record<string, unknown>
 
 export interface WidgetResponse {
   widget_key: string
@@ -35,6 +44,15 @@ export interface WidgetResponse {
   missing_view?: boolean
   missing_columns?: string[]
   has_more?: boolean
+}
+
+export interface CamelWidgetResponse extends Omit<WidgetResponse, "items"> {
+  items: CamelWidgetRow[]
+}
+
+export type ParsedWidgetResponse<T> = Omit<CamelWidgetResponse, "items"> & {
+  items: T[]
+  parse_issues?: WidgetParseIssue[]
 }
 
 export interface BatchWidgetRequest {
@@ -57,6 +75,11 @@ export interface BatchWidgetResponse extends WidgetResponse {
   applied_filters?: Record<string, unknown>
   ignored_filters?: Record<string, unknown>
   error?: string
+  /**
+   * FE-side best-effort validation issues (when we have a widget schema).
+   * Not returned by backend.
+   */
+  parse_issues?: WidgetParseIssue[]
 }
 
 export interface BatchWidgetsResponse {
@@ -97,7 +120,58 @@ export const fetchWidget = async (
   const response = await api.get<WidgetResponse>(`/analytics/widgets/${widgetKey}`, {
     params: normalizedFilters,
   })
-  return response.data
+  const data = response.data
+  const schema = getWidgetRowSchema(widgetKey)
+  if (schema) {
+    const parsed = parseWidgetRowsSafe(
+      (data.items ?? []).map((row) => camelizeUnknownRecordShallow(row)),
+      schema
+    )
+    if (parsed.issues.length && process.env.NODE_ENV !== "production") {
+      console.warn(`[widgets] ${widgetKey} schema issues:`, parsed.issues.slice(0, 5))
+    }
+  }
+  if ((data.missing_view || data.missing_columns?.length) && process.env.NODE_ENV !== "production") {
+    console.warn(`[widgets] ${widgetKey} missing data:`, {
+      missing_view: data.missing_view,
+      missing_columns: data.missing_columns,
+    })
+  }
+  return {
+    ...data,
+    items: (data.items ?? []).map((row) => addCamelAccessorsUnknownRecordShallow(row) as WidgetRow),
+  }
+}
+
+export const fetchWidgetCamel = async (
+  widgetKey: string,
+  filters: WidgetFilters
+): Promise<CamelWidgetResponse> => {
+  const raw = await fetchWidget(widgetKey, filters)
+  return {
+    ...raw,
+    items: raw.items.map((row) => camelizeUnknownRecordShallow(row)),
+  }
+}
+
+export const fetchWidgetParsed = async <T>(
+  widgetKey: string,
+  filters: WidgetFilters,
+  rowSchema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  options: { strict?: boolean } = {}
+): Promise<ParsedWidgetResponse<T>> => {
+  const camel = await fetchWidgetCamel(widgetKey, filters)
+  const parsed = parseWidgetRowsSafe(camel.items, rowSchema)
+  if (options.strict && parsed.issues.length) {
+    throw new Error(
+      `Widget ${widgetKey} failed schema validation (${parsed.issues.length} rows). First: ${parsed.issues[0]?.message ?? "unknown"}`
+    )
+  }
+  return {
+    ...camel,
+    items: parsed.items,
+    parse_issues: parsed.issues.length ? parsed.issues : undefined,
+  }
 }
 
 export const fetchWidgetsBatch = async (
@@ -114,7 +188,88 @@ export const fetchWidgetsBatch = async (
       : undefined,
   }
   const response = await api.post<BatchWidgetsResponse>("/analytics/widgets/batch", normalizedPayload)
-  return response.data
+  const raw = response.data
+  const items: Record<string, BatchWidgetResponse> = {}
+
+  for (const [alias, widget] of Object.entries(raw.items ?? {})) {
+    const schema = getWidgetRowSchema(widget.widget_key)
+    const parseResult = schema
+      ? parseWidgetRowsSafe(
+          (widget.items ?? []).map((row) => camelizeUnknownRecordShallow(row)),
+          schema
+        )
+      : null
+
+    if (parseResult?.issues.length && process.env.NODE_ENV !== "production") {
+      console.warn(`[widgets] batch ${alias} (${widget.widget_key}) schema issues:`, parseResult.issues.slice(0, 5))
+    }
+    if ((widget.missing_view || widget.missing_columns?.length || widget.error) && process.env.NODE_ENV !== "production") {
+      console.warn(`[widgets] batch ${alias} (${widget.widget_key}) missing data:`, {
+        missing_view: widget.missing_view,
+        missing_columns: widget.missing_columns,
+        error: widget.error,
+      })
+    }
+
+    items[alias] = {
+      ...widget,
+      items: (widget.items ?? []).map((row) => addCamelAccessorsUnknownRecordShallow(row) as WidgetRow),
+      parse_issues: parseResult?.issues.length ? parseResult.issues : undefined,
+    }
+  }
+
+  return { ...raw, items }
+}
+
+export interface CamelBatchWidgetResponse extends Omit<BatchWidgetResponse, "items"> {
+  items: CamelWidgetRow[]
+}
+
+export interface CamelBatchWidgetsResponse {
+  items: Record<string, CamelBatchWidgetResponse>
+}
+
+export const fetchWidgetsBatchCamel = async (
+  payload: BatchWidgetsPayload
+): Promise<CamelBatchWidgetsResponse> => {
+  const raw = await fetchWidgetsBatch(payload)
+  const items: Record<string, CamelBatchWidgetResponse> = {}
+  for (const [alias, widget] of Object.entries(raw.items)) {
+    items[alias] = {
+      ...widget,
+      items: (widget.items ?? []).map((row) => camelizeUnknownRecordShallow(row)),
+    }
+  }
+  return { items }
+}
+
+export const fetchWidgetsBatchParsed = async <T extends Record<string, z.ZodTypeAny>>(
+  payload: BatchWidgetsPayload,
+  schemasByAlias: T,
+  options: { strict?: boolean } = {}
+): Promise<{
+  items: {
+    [K in keyof T]: Omit<CamelBatchWidgetResponse, "items"> & { items: z.infer<T[K]>[]; parse_issues?: WidgetParseIssue[] }
+  } & Record<string, CamelBatchWidgetResponse>
+}> => {
+  const camel = await fetchWidgetsBatchCamel(payload)
+  const parsed: Record<string, any> = { ...camel.items }
+  for (const [alias, schema] of Object.entries(schemasByAlias)) {
+    const widget = camel.items[alias]
+    if (!widget) continue
+    const parsedRows = parseWidgetRowsSafe(widget.items, schema)
+    if (options.strict && parsedRows.issues.length) {
+      throw new Error(
+        `Widget batch ${alias} failed schema validation (${parsedRows.issues.length} rows). First: ${parsedRows.issues[0]?.message ?? "unknown"}`
+      )
+    }
+    parsed[alias] = {
+      ...widget,
+      items: parsedRows.items,
+      parse_issues: parsedRows.issues.length ? parsedRows.issues : undefined,
+    }
+  }
+  return { items: parsed as any }
 }
 
 type InsightsQuery = {
@@ -179,7 +334,17 @@ type WidgetFilterKey = keyof WidgetFilters
 
 const BASE_FILTERS: WidgetFilterKey[] = ["start_date", "end_date", "limit", "offset", "order_by"]
 const CITY_FILTERS: WidgetFilterKey[] = [...BASE_FILTERS, "id_city", "entity_id"]
-const GA4_FILTERS: WidgetFilterKey[] = [...BASE_FILTERS]
+const MARKETING_SCOPE_FILTERS: WidgetFilterKey[] = [...BASE_FILTERS, "id_city", "entity_id", "source", "product", "branch"]
+const GA4_FILTERS: WidgetFilterKey[] = [
+  ...BASE_FILTERS,
+  "id_city",
+  "entity_id",
+  "platform",
+  "source",
+  "channel",
+  "campaign_id",
+  "conversion_type",
+]
 const CITY_PLATFORM_FILTERS: WidgetFilterKey[] = [
   ...BASE_FILTERS,
   "id_city",
@@ -223,6 +388,7 @@ const WIDGETS_USE_CHANNEL = new Set<string>([
   "contracts.attribution_daily_city",
   "contracts.attributed",
   "contracts.attributed_detail_v2",
+  "contracts.paid_creatives_top",
   "contracts.top_campaigns",
   "contracts.meta_by_ad_daily",
   "contracts.gads_by_campaign_daily",
@@ -232,7 +398,7 @@ const WIDGETS_USE_CHANNEL = new Set<string>([
 const WIDGET_FILTER_OVERRIDES: Record<string, WidgetFilterKey[]> = {
   "ads.ads_daily": CITY_PLATFORM_FILTERS,
   "ads.ads_ad_profile_daily": CITY_PLATFORM_FILTERS,
-  "ads.ads_campaigns_daily": CITY_PLATFORM_FILTERS,
+  "ads.campaigns_daily": CITY_PLATFORM_FILTERS,
   "ads.ads_anomalies_7d": ["id_city", "platform", "limit", "offset", "order_by"],
   "ads.kpi_total": CITY_PLATFORM_FILTERS,
   "ads.creative_type_summary": CITY_PLATFORM_FILTERS,
@@ -247,17 +413,17 @@ const WIDGET_FILTER_OVERRIDES: Record<string, WidgetFilterKey[]> = {
   "ads.meta_campaigns_by_product": CITY_PLATFORM_FILTERS,
   "ads.creatives_detailed": CITY_PLATFORM_FILTERS,
   "ads.channel_mix_daily": CITY_CHANNEL_FILTERS,
-  "campaigns.table": CITY_CHANNEL_FILTERS,
-  "campaigns.inventory_daily_city": CITY_PLATFORM_FILTERS,
-  "campaigns.top_metrics": CITY_CHANNEL_FILTERS,
-  "sources.revenue_split": CITY_CHANNEL_FILTERS,
-  "marketing.offline_sources_active": CITY_FILTERS,
+  "campaigns.table": MARKETING_SCOPE_FILTERS,
+  "campaigns.inventory_daily_city": MARKETING_SCOPE_FILTERS,
+  "campaigns.top_metrics": MARKETING_SCOPE_FILTERS,
+  "sources.revenue_split": MARKETING_SCOPE_FILTERS,
+  "marketing.offline_sources_active": MARKETING_SCOPE_FILTERS,
   "sources.offline_breakdown_daily_city": CITY_FILTERS,
   "contracts.daily_city": CITY_CHANNEL_FILTERS,
   "contracts.attribution_daily_city": CITY_CHANNEL_FILTERS,
-  "contracts.attribution_daily_city_display_current": CITY_CHANNEL_FILTERS,
   "contracts.attributed": CITY_CHANNEL_FILTERS,
   "contracts.attributed_detail_v2": CITY_CHANNEL_FILTERS,
+  "contracts.paid_creatives_top": CITY_CHANNEL_FILTERS,
   "contracts.top_campaigns": CITY_CHANNEL_FILTERS,
   "contracts.meta_by_ad_daily": CITY_CHANNEL_FILTERS,
   "contracts.gads_by_campaign_daily": CITY_CHANNEL_FILTERS,
@@ -270,13 +436,12 @@ const WIDGET_FILTER_OVERRIDES: Record<string, WidgetFilterKey[]> = {
   "crm.lead_profile": [...CRM_FILTERS, "entity_id"],
   "crm.sources_performance_daily": CRM_FILTERS,
   "crm.form_unit_economics_daily": CRM_FILTERS,
-  "crm.form_unit_economics_daily_v2": CRM_FILTERS,
   "creatives.type_cards": CITY_PLATFORM_FILTERS,
   "creatives.table": CITY_PLATFORM_FILTERS,
 }
 
-const normalizeChannelValue = (value?: string | null) => {
-  if (!value) return value
+const normalizeChannelValue = (value?: string | null): string | undefined => {
+  if (!value) return undefined
   const key = value.toLowerCase().replace(/[^a-z0-9]/g, "")
   if (key === "meta") return "paid_meta"
   if (key === "gads" || key === "googleads") return "paid_gads"
@@ -345,7 +510,7 @@ export const normalizeWidgetFilters = (filters: WidgetFilters, widgetKey?: strin
     ) {
       return
     }
-    cleaned[key] = value
+    ;(cleaned as Record<string, unknown>)[key] = value
   })
 
   return cleaned

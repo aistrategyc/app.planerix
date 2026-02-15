@@ -25,18 +25,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { EmptyState } from "@/components/ui/empty-state"
 import { PageLoader } from "@/components/ui/loading-spinner"
 
-import {
-  Plus,
-  Search,
-  Calendar as CalendarIcon,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Edit3,
-  Trash2
-} from "lucide-react"
+import { Plus, Search, Calendar as CalendarIcon, Clock, AlertTriangle, CheckCircle2, XCircle, Loader2, Edit3, Trash2 } from "lucide-react"
 
 // Calendar localization
 const locales = { 'en-US': enUS }
@@ -445,7 +434,7 @@ function CalendarPageContent() {
               view={view}
               onView={setView}
               style={{ height: 600 }}
-              eventPropGetter={(event: CalendarUIEvent) => {
+              eventPropGetter={() => {
                 return {
                   style: {
                     backgroundColor: 'transparent',

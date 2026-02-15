@@ -1,8 +1,9 @@
 import * as React from "react"
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts"
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { format } from "date-fns"
 import { uk } from "date-fns/locale"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipItemStyle, chartTooltipStyle } from "@/components/analytics/chart-theme"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 interface DailyRow {
   date: string
@@ -85,7 +86,7 @@ export function SalesDailyChart({ data }: SalesDailyChartProps) {
 
       {/* Линейный график */}
       <div className="rounded-lg border p-2 sm:p-3">
-        <ResponsiveContainer width="100%" height={320}>
+        <SafeResponsiveContainer width="100%" height={320}>
           <LineChart
             data={formattedData}
             margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
@@ -139,7 +140,7 @@ export function SalesDailyChart({ data }: SalesDailyChartProps) {
               activeDot={{ r: 4 }}
             />
           </LineChart>
-        </ResponsiveContainer>
+        </SafeResponsiveContainer>
       </div>
     </div>
   )

@@ -1,15 +1,7 @@
 // hooks/useCalendar.ts
 import { useState, useEffect, useCallback } from 'react'
 import { useToast } from '@/components/ui/use-toast'
-import { 
-  CalendarAPI, 
-  CalendarEvent, 
-  CreateEventRequest, 
-  UpdateEventRequest,
-  EventQueryParams,
-  EventType,
-  EventStatus 
-} from '@/lib/api/calendar'
+import { CalendarAPI, CalendarEvent, CreateEventRequest, UpdateEventRequest, EventQueryParams, EventType, EventStatus } from '@/lib/api/calendar'
 
 // Hook for calendar events management
 export const useCalendar = (startDate?: Date, endDate?: Date) => {

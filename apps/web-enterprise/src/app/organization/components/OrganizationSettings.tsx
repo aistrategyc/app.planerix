@@ -9,15 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import { 
-  Shield,
-  CheckCircle,
-  AlertCircle,
-  Edit,
-  Settings,
-  Activity,
-  Copy
-} from "lucide-react";
+import { Shield, CheckCircle, AlertCircle, Edit, Settings, Activity, Copy } from "lucide-react";
 import { EditOrganizationDialog } from "./EditOrganizationDialog";
 import type { Organization, OrganizationStats } from "../hooks/useOrganization";
 import { useOrganizationApi } from "../hooks/useApi";
@@ -141,7 +133,7 @@ export function OrganizationSettings({
     let credentialData: Record<string, unknown> = {};
     try {
       credentialData = JSON.parse(payload.credentialData || "{}");
-    } catch (err) {
+    } catch {
       toast({ title: "Ошибка", description: "Неверный JSON для credential", variant: "destructive" });
       return;
     }

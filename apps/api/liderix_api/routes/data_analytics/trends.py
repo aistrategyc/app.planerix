@@ -3,7 +3,7 @@ Trends endpoints for Data Analytics
 Source: dashboards.v8_platform_daily_full (includes ALL traffic sources + full ad metrics)
 """
 import logging
-from typing import List, Optional
+from typing import Optional
 from datetime import date
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import date
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, Field
 
 
 class AdsDailyItem(BaseModel):
@@ -70,9 +71,6 @@ class AdsAnalyticsResponse(BaseModel):
 # ============================================================================
 # Schemas for real ads management from ITstep analytics database
 # ============================================================================
-
-from typing import Literal
-from pydantic import Field
 
 
 class AdMetrics(BaseModel):

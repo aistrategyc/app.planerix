@@ -17,40 +17,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PageHeader } from "@/components/layout/PageHeader"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/components/ui/use-toast"
 import { MembershipRole, RoleLabels } from "@/types/roles"
 
-import {
-  Building2,
-  Calendar,
-  Camera,
-  CheckSquare,
-  Clock,
-  Edit3,
-  Globe,
-  Mail,
-  Save,
-  Target,
-  TrendingUp,
-  User,
-  Users,
-  X,
-  Loader2,
-  Plus,
-  Shield,
-  Settings,
-  BarChart3,
-  Activity
-} from "lucide-react"
+import { Building2, Calendar, Camera, CheckSquare, Clock, Edit3, Globe, Mail, Save, Target, TrendingUp, User, Users, X, Loader2, Plus, Shield, Settings, BarChart3, Activity } from "lucide-react"
 
 const ROLE_OPTIONS: MembershipRole[] = [
   "owner",

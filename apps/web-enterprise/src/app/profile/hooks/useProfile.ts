@@ -4,13 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useToast } from '@/components/ui/use-toast'
 import { useAuth } from '@/contexts/auth-context'
-import {
-  getCurrentUser,
-  updateUserProfile,
-  uploadUserAvatar,
-  changeUserPassword,
-  getUserStats,
-} from '@/lib/api/profile'
+import { getCurrentUser, updateUserProfile, uploadUserAvatar, changeUserPassword, getUserStats } from '@/lib/api/profile'
 import { UserProfile, UserProfileUpdate, UserStats } from '@/types/profile'
 
 const getErrorMessage = (err: unknown, fallback: string): string => {

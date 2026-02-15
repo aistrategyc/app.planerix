@@ -1,5 +1,6 @@
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from "recharts"
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts'
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipStyle, chartTooltipItemStyle } from "@/components/analytics/chart-theme"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 interface Props {
   data: Array<{
@@ -34,7 +35,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <div className="p-4 rounded" style={chartTooltipStyle} role="tooltip" aria-label="Деталі графіка">
         <p className="font-semibold">{`Дата: ${label}`}</p>
         {payload.map((entry: any, index: number) => (
-          <p key={index} style={{ color: entry.stroke, ...chartTooltipItemStyle }}>
+          <p key={index} style={{ ...chartTooltipItemStyle, color: entry.stroke }}>
             {entry.name === "Витрати"
               ? `${entry.name}: ${entry.value.toLocaleString("uk-UA", { style: "currency", currency: "UAH" })}`
               : `${entry.name}: ${entry.value != null ? entry.value.toLocaleString("uk-UA") : "–"}`}
@@ -67,7 +68,7 @@ export function AdsDailyChart({ data }: Props) {
           Немає даних для відображення
         </div>
       ) : (
-        <ResponsiveContainer>
+        <SafeResponsiveContainer>
           <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
             <CartesianGrid {...chartGridProps} />
             <XAxis dataKey="date" {...chartAxisProps} label={{ value: "Дата", position: "bottom", offset: 0 }} />
@@ -133,7 +134,7 @@ export function AdsDailyChart({ data }: Props) {
               </>
             )}
           </LineChart>
-        </ResponsiveContainer>
+        </SafeResponsiveContainer>
       )}
     </div>
   )

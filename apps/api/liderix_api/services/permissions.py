@@ -5,10 +5,9 @@ Supports organization-level and project-level permissions with hierarchical role
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Any, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_
 
 from liderix_api.models.users import User
 from liderix_api.models.memberships import Membership
@@ -17,13 +16,8 @@ from liderix_api.models.tasks import TaskWatcher
 from liderix_api.models.project_members import ProjectMember
 from liderix_api.enums import (
     Permission,
-    MembershipRole,
     MembershipStatus,
-    UserRole,
-    get_membership_role_permissions,
-    membership_has_permission,
-    get_role_permissions,
-    user_has_permission
+    membership_has_permission
 )
 
 logger = logging.getLogger(__name__)

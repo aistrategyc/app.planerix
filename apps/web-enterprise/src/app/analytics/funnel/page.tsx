@@ -5,11 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, FunnelChart, Cell } from 'recharts'
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, FunnelChart, Cell } from 'recharts'
 import { TrendingUp, Target, Eye, Users, Activity, Filter, Zap } from "lucide-react"
 import { api } from "@/lib/api/config"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipItemStyle, chartTooltipStyle } from "@/components/analytics/chart-theme"
 import { PageHeader } from "@/components/layout/PageHeader"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
+import { formatCurrency, formatNumber, formatPercent } from "@/app/analytics/utils/formatters"
+import { ExecutiveSummary, type ExecutiveSummaryItem } from "@/components/analytics/ExecutiveSummary"
+import { AnalyticsSkeleton } from "@/components/analytics/AnalyticsSkeleton"
 
 interface FunnelRow {
   date: string
@@ -45,21 +49,9 @@ interface FunnelData {
   }
 }
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
-    maximumFractionDigits: 0
-  }).format(value)
-}
-
-const formatNumber = (value: number) => {
-  return new Intl.NumberFormat('ru-RU').format(value)
-}
-
-const formatPercent = (value: number) => {
-  return `${(value || 0).toFixed(2)}%`
-}
+const formatRuble = (value: number) =>
+  formatCurrency(value, { currencyCode: "RUB", minimumFractionDigits: 0, maximumFractionDigits: 0 })
+const formatPercentValue = (value: number) => formatPercent(value, { digits: 2, assumeRatio: false })
 
 export default function FunnelPage() {
   const [data, setData] = useState<FunnelData | null>(null)
@@ -236,7 +228,7 @@ export default function FunnelPage() {
     const overallConversion = totals.total_impressions > 0 ? (totals.total_contracts / totals.total_impressions) * 100 : 0
 
     const averageRoas = data.funnel_data.length > 0
-      ? data.funnel_data.reduce((sum, item) => sum + item.roas, 0) / data.funnel_data.length
+      ? data.funnel_data.reduce((sum, item) => sum + (item.roas ?? 0), 0) / data.funnel_data.length
       : 0
 
     const costPerStage = {
@@ -256,7 +248,9 @@ export default function FunnelPage() {
   }
 
   const availableProducts = data?.funnel_data
-    ? Array.from(new Set(data.funnel_data.map(item => item.product_key).filter(Boolean)))
+    ? Array.from(
+        new Set(data.funnel_data.map((item) => item.product_key).filter((value): value is string => Boolean(value)))
+      )
     : []
 
   const availablePlatforms = data?.funnel_data
@@ -267,6 +261,35 @@ export default function FunnelPage() {
   const timelineFunnel = prepareTimelineFunnel()
   const campaignAnalysis = prepareCampaignAnalysis()
   const metrics = calculateMetrics()
+  const summaryItems: ExecutiveSummaryItem[] = [
+    {
+      title: "CTR",
+      kpi: formatPercentValue(metrics.ctr),
+      deltaLabel: "n/a",
+      deltaDirection: "flat",
+      reason: "CTR aggregated across the full funnel period.",
+      action: "Improve ad relevance and test new creatives.",
+      impact: `Clicks: ${formatNumber(data?.funnel_totals.total_clicks ?? 0)}.`,
+    },
+    {
+      title: "Lead → Contract",
+      kpi: formatPercentValue(metrics.leadToContract),
+      deltaLabel: "n/a",
+      deltaDirection: "flat",
+      reason: "Conversion from lead stage to contract.",
+      action: "Audit lead qualification and sales follow-up.",
+      impact: `Contracts: ${formatNumber(data?.funnel_totals.total_contracts ?? 0)}.`,
+    },
+    {
+      title: "ROAS",
+      kpi: `${metrics.averageRoas.toFixed(2)}x`,
+      deltaLabel: "n/a",
+      deltaDirection: "flat",
+      reason: "Average ROAS across funnel data.",
+      action: "Shift spend to campaigns with highest ROAS.",
+      impact: formatRuble(data?.funnel_totals.total_revenue ?? 0),
+    },
+  ]
 
   if (loading) {
     return (
@@ -276,11 +299,7 @@ export default function FunnelPage() {
           description="Полная воронка атрибуции от показа до контракта"
           actions={<div className="animate-pulse bg-muted rounded h-8 w-32" />}
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="animate-pulse bg-slate-200 rounded-lg h-32"></div>
-          ))}
-        </div>
+        <AnalyticsSkeleton variant="grid" count={4} />
       </div>
     )
   }
@@ -349,6 +368,12 @@ export default function FunnelPage() {
         }
       />
 
+      <ExecutiveSummary
+        title="Executive Summary"
+        subtitle="Key signals and recommended actions"
+        items={summaryItems}
+      />
+
       {/* Key Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -357,7 +382,7 @@ export default function FunnelPage() {
             <Eye className="h-5 w-5 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatPercent(metrics.ctr)}</div>
+            <div className="text-2xl font-bold">{formatPercentValue(metrics.ctr)}</div>
           </CardContent>
         </Card>
 
@@ -367,7 +392,7 @@ export default function FunnelPage() {
             <Users className="h-5 w-5 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatPercent(metrics.clickToLead)}</div>
+            <div className="text-2xl font-bold">{formatPercentValue(metrics.clickToLead)}</div>
           </CardContent>
         </Card>
 
@@ -377,7 +402,7 @@ export default function FunnelPage() {
             <Target className="h-5 w-5 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatPercent(metrics.leadToContract)}</div>
+            <div className="text-2xl font-bold">{formatPercentValue(metrics.leadToContract)}</div>
           </CardContent>
         </Card>
 
@@ -387,7 +412,7 @@ export default function FunnelPage() {
             <TrendingUp className="h-5 w-5 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatPercent(metrics.overallConversion)}</div>
+            <div className="text-2xl font-bold">{formatPercentValue(metrics.overallConversion)}</div>
           </CardContent>
         </Card>
       </div>
@@ -403,7 +428,7 @@ export default function FunnelPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={350}>
+              <SafeResponsiveContainer width="100%" height={350}>
                 <BarChart data={funnelVisualization} layout="horizontal">
                   <CartesianGrid {...chartGridProps} />
                   <XAxis type="number" tickFormatter={(value) => formatNumber(Number(value))} {...chartAxisProps} />
@@ -423,7 +448,7 @@ export default function FunnelPage() {
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </SafeResponsiveContainer>
             </CardContent>
           </Card>
 
@@ -438,7 +463,7 @@ export default function FunnelPage() {
               <div className="flex justify-between items-center p-4 bg-blue-50 rounded-lg">
                 <div>
                   <p className="text-sm text-slate-600">CPC (Стоимость клика)</p>
-                  <p className="text-2xl font-bold text-blue-600">{formatCurrency(metrics.costPerStage.cpc)}</p>
+                  <p className="text-2xl font-bold text-blue-600">{formatRuble(metrics.costPerStage.cpc)}</p>
                 </div>
                 <Eye className="h-8 w-8 text-blue-500" />
               </div>
@@ -446,7 +471,7 @@ export default function FunnelPage() {
               <div className="flex justify-between items-center p-4 bg-green-50 rounded-lg">
                 <div>
                   <p className="text-sm text-slate-600">CPL (Стоимость лида)</p>
-                  <p className="text-2xl font-bold text-green-600">{formatCurrency(metrics.costPerStage.cpl)}</p>
+                  <p className="text-2xl font-bold text-green-600">{formatRuble(metrics.costPerStage.cpl)}</p>
                 </div>
                 <Users className="h-8 w-8 text-green-500" />
               </div>
@@ -454,7 +479,7 @@ export default function FunnelPage() {
               <div className="flex justify-between items-center p-4 bg-purple-50 rounded-lg">
                 <div>
                   <p className="text-sm text-slate-600">CPA (Стоимость контракта)</p>
-                  <p className="text-2xl font-bold text-purple-600">{formatCurrency(metrics.costPerStage.cpa)}</p>
+                  <p className="text-2xl font-bold text-purple-600">{formatRuble(metrics.costPerStage.cpa)}</p>
                 </div>
                 <Target className="h-8 w-8 text-purple-500" />
               </div>
@@ -480,7 +505,7 @@ export default function FunnelPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={400}>
+            <SafeResponsiveContainer width="100%" height={400}>
               <AreaChart data={timelineFunnel}>
                 <CartesianGrid {...chartGridProps} />
                 <XAxis dataKey="date" {...chartAxisProps} />
@@ -489,7 +514,7 @@ export default function FunnelPage() {
                   contentStyle={chartTooltipStyle}
                   itemStyle={chartTooltipItemStyle}
                   formatter={(value, name) => [
-                    formatNumber(Number(value)),
+                      formatNumber(Number(value)),
                     name === 'impressions' ? 'Показы' :
                     name === 'clicks' ? 'Клики' :
                     name === 'leads' ? 'Лиды' :
@@ -502,7 +527,7 @@ export default function FunnelPage() {
                 <Area type="monotone" dataKey="leads" stackId="3" stroke={CHART_COLORS.tertiary} fill={CHART_COLORS.tertiary} fillOpacity={0.8} name="Лиды" />
                 <Area type="monotone" dataKey="contracts" stackId="4" stroke={CHART_COLORS.quaternary} fill={CHART_COLORS.quaternary} fillOpacity={1} name="Контракты" />
               </AreaChart>
-            </ResponsiveContainer>
+            </SafeResponsiveContainer>
           </CardContent>
         </Card>
       )}
@@ -544,20 +569,20 @@ export default function FunnelPage() {
                       <td className="py-2">{formatNumber(campaign.impressions)}</td>
                       <td className="py-2">
                         <span className={campaign.ctr > 2 ? "text-green-600 font-medium" : campaign.ctr > 1 ? "text-orange-600" : "text-slate-600"}>
-                          {formatPercent(campaign.ctr)}
+                          {formatPercentValue(campaign.ctr)}
                         </span>
                       </td>
                       <td className="py-2">
                         <span className={campaign.conversion_rate > 10 ? "text-green-600 font-medium" : campaign.conversion_rate > 5 ? "text-orange-600" : "text-slate-600"}>
-                          {formatPercent(campaign.conversion_rate)}
+                          {formatPercentValue(campaign.conversion_rate)}
                         </span>
                       </td>
                       <td className="py-2">
                         <span className={campaign.lead_to_deal > 20 ? "text-green-600 font-medium" : campaign.lead_to_deal > 10 ? "text-orange-600" : "text-slate-600"}>
-                          {formatPercent(campaign.lead_to_deal)}
+                          {formatPercentValue(campaign.lead_to_deal)}
                         </span>
                       </td>
-                      <td className="py-2">{formatCurrency(campaign.cost)}</td>
+                      <td className="py-2">{formatRuble(campaign.cost)}</td>
                       <td className="py-2">
                         <span className={campaign.roas > 3 ? "text-green-600 font-medium" : campaign.roas > 1 ? "text-orange-600" : "text-red-600"}>
                           {campaign.roas.toFixed(2)}x
@@ -596,11 +621,11 @@ export default function FunnelPage() {
               <div className="text-muted-foreground text-sm">Контракты</div>
             </div>
             <div className="space-y-2">
-              <div className="text-3xl font-bold text-purple-600">{formatCurrency(data?.funnel_totals.total_cost || 0)}</div>
+              <div className="text-3xl font-bold text-purple-600">{formatRuble(data?.funnel_totals.total_cost || 0)}</div>
               <div className="text-muted-foreground text-sm">Затраты</div>
             </div>
             <div className="space-y-2">
-              <div className="text-3xl font-bold text-green-600">{formatCurrency(data?.funnel_totals.total_revenue || 0)}</div>
+              <div className="text-3xl font-bold text-green-600">{formatRuble(data?.funnel_totals.total_revenue || 0)}</div>
               <div className="text-muted-foreground text-sm">Выручка</div>
             </div>
           </div>

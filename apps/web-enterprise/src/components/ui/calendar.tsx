@@ -36,8 +36,8 @@ export function Calendar({
   const handleChange = (item: RangePayload | Date) => {
     if (mode === "range") {
       const range = (item as RangePayload).selection || (item as RangeSelection)
-      const startDate = range?.startDate || range?.from
-      const endDate = range?.endDate || range?.to
+      const startDate = range?.startDate
+      const endDate = range?.endDate
       if (startDate && endDate) {
         onChange?.({ from: startDate, to: endDate })
       }

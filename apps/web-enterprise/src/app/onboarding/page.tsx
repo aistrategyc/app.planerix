@@ -9,13 +9,7 @@ import { getOrganizations } from '@/lib/api/profile'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/components/ui/use-toast'
@@ -349,7 +343,11 @@ function OnboardingPageContentContent() {
                 <Input
                   type="url"
                   placeholder="https://company.com"
-                  value={company.custom_fields?.website ?? ''}
+                  value={
+                    typeof company.custom_fields?.website === "string"
+                      ? company.custom_fields.website
+                      : ""
+                  }
                   onChange={(e) => setCompany((v) => ({ 
                     ...v, 
                     custom_fields: { ...v.custom_fields, website: e.target.value }
@@ -361,7 +359,11 @@ function OnboardingPageContentContent() {
                 <Input
                   type="tel"
                   placeholder="+48 123 456 789"
-                  value={company.custom_fields?.phone ?? ''}
+                  value={
+                    typeof company.custom_fields?.phone === "string"
+                      ? company.custom_fields.phone
+                      : ""
+                  }
                   onChange={(e) => setCompany((v) => ({ 
                     ...v, 
                     custom_fields: { ...v.custom_fields, phone: e.target.value }
@@ -619,7 +621,7 @@ function OnboardingPageContentContent() {
               {company.description && <div><b>Описание:</b> {company.description}</div>}
               {company.industry && <div><b>Индустрия:</b> {company.industry}</div>}
               {company.size && <div><b>Размер:</b> {company.size}</div>}
-              {company.custom_fields?.website && (
+              {typeof company.custom_fields?.website === "string" && company.custom_fields.website && (
                 <div><b>Веб-сайт:</b> {company.custom_fields.website}</div>
               )}
               {invites.filter(i => i.email.trim()).length > 0 && (
