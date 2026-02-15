@@ -76,6 +76,57 @@ function mapMembershipToUser(membership: MembershipWithUser | null): User | null
   };
 }
 
+
+function decodeJwtPayload(token: string | null): Record<string, unknown> | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    const decoded =
+      typeof atob === "function"
+        ? atob(padded)
+        : (globalThis as { Buffer?: { from: (input: string, enc: string) => { toString: (enc: string) => string } } })
+            .Buffer?.from(padded, "base64")
+            .toString("utf-8");
+    if (!decoded) return null;
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+function fallbackUserFromToken(token: string | null): User | null {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  const sub = (payload as { sub?: unknown }).sub;
+  if (typeof sub != "string" && typeof sub != "number") return null;
+
+  const email = typeof payload.email === "string" ? payload.email : "";
+  const username = typeof payload.username === "string" ? payload.username : null;
+  const full_name = typeof payload.full_name === "string" ? payload.full_name : null;
+  const roleFromRoles = Array.isArray(payload.roles) && payload.roles.length ? String(payload.roles[0]) : null;
+  const role = typeof payload.role === "string" ? payload.role : roleFromRoles;
+  const is_verified = typeof payload.is_verified === "boolean" ? payload.is_verified : true;
+  const is_active = typeof payload.is_active === "boolean" ? payload.is_active : true;
+
+  return {
+    id: String(sub),
+    email,
+    username,
+    full_name,
+    avatar_url: null,
+    role: role ?? null,
+    is_active,
+    is_verified,
+  };
+}
+
+function resolveUser(membership: MembershipWithUser | null, token: string | null): User | null {
+  return mapMembershipToUser(membership) ?? fallbackUserFromToken(token);
+}
+
 // ---- provider ----
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -114,14 +165,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     try {
       const membership = await CompanyAPI.getCurrentMembership();
-      const mapped = mapMembershipToUser(membership);
+      const mapped = resolveUser(membership, accessToken);
 
       if (mapped) {
         setUser(mapped);
         return;
       }
 
-      // membership not available → treat as unauthenticated
+      // membership not available → fallback to token info if possible
       setUser(null);
       return;
     } catch (err) {
@@ -187,7 +238,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       try {
         const membership = await CompanyAPI.getCurrentMembership();
-        const mapped = mapMembershipToUser(membership);
+        const mapped = resolveUser(membership, data.access_token);
         setUser(mapped);
       } catch (e) {
         console.error("Failed to fetch membership after login:", e);

@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useState, useEffect } from "react"
 import { z } from "zod"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -36,6 +37,7 @@ const registerSchema = z.object({
 type RegisterForm = z.infer<typeof registerSchema>
 
 export default function RegisterPage() {
+  const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const { register: doRegister, error: authError, clearError } = useAuth()
@@ -78,7 +80,7 @@ export default function RegisterPage() {
 
     try {
       await doRegister(data)
-      // navigation happens inside useAuth.register (to /verify-email)
+      router.push(`/verify-email?email=${encodeURIComponent(data.email)}`)
     } catch {
       // useAuth already handles the error and sets authError
       // No need to extract error message here
