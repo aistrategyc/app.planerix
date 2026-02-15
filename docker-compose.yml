@@ -105,7 +105,7 @@ services:
     image: qdrant/qdrant:latest
     container_name: planerix-qdrant
     environment:
-      - QDRANT__SERVICE__API_KEY=REPLACE_ME
+      - QDRANT__SERVICE__API_KEY=${QDRANT__SERVICE__API_KEY}
     volumes:
       - planerix-qdrant-prod-data:/qdrant/storage
     ports:
