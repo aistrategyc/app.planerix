@@ -1,0 +1,185 @@
+services:
+  postgres:
+    image: postgres:14
+    container_name: planerix-postgres
+    environment:
+      POSTGRES_DB: ${PLANERIX_DB_NAME}
+      POSTGRES_USER: ${PLANERIX_DB_USER}
+      POSTGRES_PASSWORD: ${PLANERIX_DB_PASSWORD}
+    volumes:
+      - planerix-postgres-prod-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:15432:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: planerix-redis
+    volumes:
+      - planerix-redis-prod-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+
+  itstep-postgres:
+    image: postgres:14
+    container_name: itstep-postgres
+    environment:
+      POSTGRES_DB: ${ITSTEP_DB_NAME}
+      POSTGRES_USER: ${ITSTEP_DB_USER}
+      POSTGRES_PASSWORD: ${ITSTEP_DB_PASSWORD}
+    volumes:
+      - itstep_postgres_data:/var/lib/postgresql/data
+    # Пока оставляем открытым наружу для разработки (потом закроем/allowlist)
+    ports:
+      - "127.0.0.1:5433:5432"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+    container_name: planerix-api
+    env_file:
+      - ${ENV_FILE:-./.env}
+    depends_on:
+      - postgres
+      - redis
+      - itstep-postgres
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web-enterprise
+      args:
+        NEXT_PUBLIC_API_ORIGIN: ${NEXT_PUBLIC_API_ORIGIN}
+        NEXT_PUBLIC_API_PREFIX: ${NEXT_PUBLIC_API_PREFIX}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_ANALYTICS_SHOW_CRM_RAW_WIDGETS: ${NEXT_PUBLIC_ANALYTICS_SHOW_CRM_RAW_WIDGETS}
+    env_file:
+      - ${ENV_FILE:-./.env}
+    environment:
+      NEXT_PUBLIC_API_ORIGIN: ${NEXT_PUBLIC_API_ORIGIN}
+      NEXT_PUBLIC_API_PREFIX: ${NEXT_PUBLIC_API_PREFIX}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_ANALYTICS_SHOW_CRM_RAW_WIDGETS: ${NEXT_PUBLIC_ANALYTICS_SHOW_CRM_RAW_WIDGETS}
+      FRONTEND_URL: ${FRONTEND_URL}
+    container_name: planerix-web
+    ports:
+      - "127.0.0.1:3002:3000"
+    restart: unless-stopped
+
+  landing:
+    build:
+      context: ./apps/planerix
+    container_name: planerix-landing
+    ports:
+      - "127.0.0.1:3001:3000"
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: planerix-n8n
+    environment:
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://n8n.planerix.com/
+      GENERIC_TIMEZONE: Europe/Warsaw
+    volumes:
+      - planerix-n8n-data:/home/node/.n8n
+    ports:
+      - "127.0.0.1:5678:5678"
+    restart: unless-stopped
+
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: planerix-lightrag
+    ports:
+      - "127.0.0.1:9621:9621"
+    volumes:
+      - planerix-lightrag-storage:/app/data/rag_storage
+      - planerix-lightrag-tiktoken:/app/data/tiktoken
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: planerix-qdrant
+    environment:
+      - QDRANT__SERVICE__API_KEY=REPLACE_ME
+    volumes:
+      - planerix-qdrant-prod-data:/qdrant/storage
+    ports:
+      - "127.0.0.1:6333:6333"
+    restart: unless-stopped
+
+
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: planerix-prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./infra/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - planerix-prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: planerix-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - planerix-grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3003:3000"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: planerix-loki
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./infra/observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - planerix-loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    restart: unless-stopped
+
+  promtail:
+    environment:
+      - DOCKER_API_VERSION=1.44
+    image: grafana/promtail:3.0.0
+    container_name: planerix-promtail
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/observability/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./infra/observability/promtail/data:/var/lib/promtail
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: planerix-node-exporter
+    ports:
+      - "127.0.0.1:9100:9100"
+    restart: unless-stopped
+
+volumes:
+  planerix-prometheus-data:
+  planerix-grafana-data:
+  planerix-loki-data:
+  planerix-qdrant-prod-data:
+  planerix-postgres-prod-data:
+  planerix-redis-prod-data:
+  planerix-n8n-data:
+  planerix-lightrag-storage:
+  planerix-lightrag-tiktoken:
+  itstep_postgres_data:
+    external: true

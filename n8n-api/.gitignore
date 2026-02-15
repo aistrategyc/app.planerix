@@ -1,0 +1,14 @@
+# local env
+.env
+.env.*
+
+# python caches
+__pycache__/
+*.pyc
+
+# local snapshots
+/_server_snapshots/
+
+# misc
+.DS_Store
+*.log

@@ -1,0 +1,1045 @@
+"""
+OnboardingService - Professional onboarding experience for new users
+
+Modern SaaS-level onboarding with:
+- Interactive multi-step wizard
+- Role-based templates (business, marketing, software, sales)
+- Sample data that demonstrates real use cases
+- Guided tours and contextual help
+- Progress tracking and completion metrics
+- Team size-based recommendations
+
+Templates:
+- business: General business management (default)
+- marketing: Digital marketing and campaigns
+- software: Agile development and sprints
+- sales: CRM and pipeline management
+- empty: Clean slate for experienced users
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Any, Optional
+from uuid import UUID
+
+import logging
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from liderix_api.models.users import User
+from liderix_api.models.organization import Organization
+from liderix_api.models.projects import Project
+from liderix_api.models.tasks import Task
+from liderix_api.models.calendar import Calendar, CalendarEvent
+from liderix_api.models.okrs import Objective, KeyResult
+from liderix_api.models.kpi import KPIIndicator, KPIMeasurement
+from liderix_api.models.event_links import EventLink, LinkType
+from liderix_api.enums import (
+    TaskStatus,
+    TaskPriority,
+    ProjectStatus,
+    EventType,
+    EventStatus,
+    OKRStatus,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class OnboardingTemplate:
+    """Base class for onboarding templates"""
+
+    def __init__(
+        self,
+        user: User,
+        org: Organization,
+        session: AsyncSession
+    ):
+        self.user = user
+        self.org = org
+        self.session = session
+        self.created_entities: Dict[str, List[Any]] = {
+            "calendars": [],
+            "events": [],
+            "projects": [],
+            "tasks": [],
+            "objectives": [],
+            "key_results": [],
+            "kpi_indicators": [],
+            "event_links": [],
+        }
+
+    async def create_all(self) -> Dict[str, Any]:
+        """Create all sample data. Override in subclasses."""
+        raise NotImplementedError
+
+    def _now(self) -> datetime:
+        """Get current UTC datetime"""
+        return datetime.now(timezone.utc)
+
+    def _days_from_now(self, days: int) -> datetime:
+        """Get datetime N days from now"""
+        return self._now() + timedelta(days=days)
+
+
+class DefaultTemplate(OnboardingTemplate):
+    """General business template with mixed content"""
+
+    async def create_all(self) -> Dict[str, Any]:
+        """Create default sample data"""
+        logger.info(f"Creating default template for user {self.user.id}")
+
+        # 1. Create default calendar
+        calendar = await self._create_default_calendar()
+
+        # 2. Create sample project
+        project = await self._create_sample_project()
+
+        # 3. Create sample tasks
+        tasks = await self._create_sample_tasks(project)
+
+        # 4. Create sample calendar events
+        events = await self._create_sample_events(calendar, project, tasks[0] if tasks else None)
+
+        # 5. Create sample OKR
+        objective, key_results = await self._create_sample_okr()
+
+        # 6. Create sample KPIs
+        kpis = await self._create_sample_kpis()
+
+        # 7. Create event links
+        links = await self._create_sample_links(events, tasks, key_results, kpis)
+
+        await self.session.commit()
+
+        return {
+            "template": "default",
+            "created": {
+                "calendars": len(self.created_entities["calendars"]),
+                "events": len(self.created_entities["events"]),
+                "projects": len(self.created_entities["projects"]),
+                "tasks": len(self.created_entities["tasks"]),
+                "objectives": len(self.created_entities["objectives"]),
+                "key_results": len(self.created_entities["key_results"]),
+                "kpi_indicators": len(self.created_entities["kpi_indicators"]),
+                "event_links": len(self.created_entities["event_links"]),
+            }
+        }
+
+    async def _create_default_calendar(self) -> Calendar:
+        """Create user's default calendar"""
+        calendar = Calendar(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            owner_id=self.user.id,
+            name="My Calendar",
+            description="Personal calendar for meetings and events",
+            color="#3174ad",
+            is_default=True,
+            is_public=False,
+            is_active=True,
+            timezone="UTC",
+            default_reminder_minutes=15,
+        )
+        self.session.add(calendar)
+        self.created_entities["calendars"].append(calendar)
+        return calendar
+
+    async def _create_sample_project(self) -> Project:
+        """Create a sample project"""
+        project = Project(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            name="Welcome Project",
+            description="This is your first project! You can edit or delete it anytime.",
+            status=ProjectStatus.ACTIVE,
+            progress=0,
+            created_by=self.user.id,
+            is_public=False,
+            start_date=self._now(),
+            end_date=self._days_from_now(30),
+        )
+        self.session.add(project)
+        self.created_entities["projects"].append(project)
+        return project
+
+    async def _create_sample_tasks(self, project: Project) -> List[Task]:
+        """Create sample tasks for the project"""
+        tasks_data = [
+            {
+                "title": "Explore Planerix Features",
+                "description": "Take a tour of the main features: projects, tasks, OKRs, and KPIs",
+                "status": TaskStatus.IN_PROGRESS,
+                "priority": TaskPriority.HIGH,
+                "progress": 50,
+            },
+            {
+                "title": "Set Your First Goal",
+                "description": "Create an OKR (Objective and Key Results) to track your goals",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.MEDIUM,
+                "progress": 0,
+            },
+            {
+                "title": "Invite Team Members",
+                "description": "Add your colleagues to collaborate on projects",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.LOW,
+                "progress": 0,
+            },
+        ]
+
+        tasks = []
+        for idx, task_data in enumerate(tasks_data):
+            task = Task(
+                id=uuid.uuid4(),
+                org_id=self.org.id,
+                project_id=project.id,
+                title=task_data["title"],
+                description=task_data["description"],
+                status=task_data["status"],
+                priority=task_data["priority"],
+                progress_percentage=task_data["progress"],
+                created_by=self.user.id,
+                assigned_to=self.user.id,
+                due_date=self._days_from_now(7 + idx * 3),
+            )
+            self.session.add(task)
+            tasks.append(task)
+            self.created_entities["tasks"].append(task)
+
+        return tasks
+
+    async def _create_sample_events(
+        self,
+        calendar: Calendar,
+        project: Optional[Project] = None,
+        task: Optional[Task] = None
+    ) -> List[CalendarEvent]:
+        """Create sample calendar events"""
+        events_data = [
+            {
+                "title": "Welcome to Planerix!",
+                "description": "Getting started with project management",
+                "event_type": EventType.MEETING,
+                "start_offset": 1,  # days from now
+                "duration_hours": 1,
+            },
+            {
+                "title": "Weekly Planning Session",
+                "description": "Review progress and plan upcoming tasks",
+                "event_type": EventType.MEETING,
+                "start_offset": 7,
+                "duration_hours": 2,
+            },
+            {
+                "title": "Project Milestone Review",
+                "description": "Check project milestones and adjust timeline",
+                "event_type": EventType.MILESTONE,
+                "start_offset": 14,
+                "duration_hours": 1,
+            },
+        ]
+
+        events = []
+        for event_data in events_data:
+            start_date = self._days_from_now(event_data["start_offset"])
+            end_date = start_date + timedelta(hours=event_data["duration_hours"])
+
+            event = CalendarEvent(
+                id=uuid.uuid4(),
+                org_id=self.org.id,
+                creator_id=self.user.id,
+                title=event_data["title"],
+                description=event_data["description"],
+                event_type=event_data["event_type"].value,
+                status=EventStatus.CONFIRMED.value,
+                start_date=start_date,
+                end_date=end_date,
+                is_all_day=False,
+                timezone="UTC",
+                is_private=False,
+                is_important=False,
+                color="#3174ad",
+                project_id=project.id if project else None,
+                task_id=task.id if task and event_data.get("link_to_task") else None,
+            )
+            self.session.add(event)
+            events.append(event)
+            self.created_entities["events"].append(event)
+
+        return events
+
+    async def _create_sample_okr(self) -> tuple[Objective, List[KeyResult]]:
+        """Create a sample OKR with key results"""
+        objective = Objective(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            title="Get Started with Planerix",
+            description="Learn the platform and set up your workspace",
+            owner_id=self.user.id,
+            status=OKRStatus.ON_TRACK,
+            progress=0,
+            start_date=self._now(),
+            end_date=self._days_from_now(90),
+            is_public=True,
+        )
+        self.session.add(objective)
+        self.created_entities["objectives"].append(objective)
+
+        kr_data = [
+            {
+                "title": "Complete 3 projects successfully",
+                "target_value": 3,
+                "unit": "projects",
+            },
+            {
+                "title": "Achieve 80% task completion rate",
+                "target_value": 80,
+                "unit": "percent",
+            },
+            {
+                "title": "Invite and onboard 5 team members",
+                "target_value": 5,
+                "unit": "members",
+            },
+        ]
+
+        key_results = []
+        for idx, kr in enumerate(kr_data):
+            key_result = KeyResult(
+                id=uuid.uuid4(),
+                objective_id=objective.id,
+                title=kr["title"],
+                description=f"Key result {idx + 1} for getting started",
+                start_value=0,
+                current_value=0,
+                target_value=kr["target_value"],
+                unit=kr["unit"],
+            )
+            self.session.add(key_result)
+            key_results.append(key_result)
+            self.created_entities["key_results"].append(key_result)
+
+        return objective, key_results
+
+    async def _create_sample_kpis(self) -> List[KPIIndicator]:
+        """Create sample KPI indicators"""
+        kpis_data = [
+            {
+                "name": "Team Productivity",
+                "description": "Measure overall team task completion",
+                "category": "Performance",
+                "unit": "percent",
+                "target_value": 85.0,
+            },
+            {
+                "name": "Project Delivery Rate",
+                "description": "Percentage of projects delivered on time",
+                "category": "Delivery",
+                "unit": "percent",
+                "target_value": 90.0,
+            },
+            {
+                "name": "Active Users",
+                "description": "Number of active team members per week",
+                "category": "Engagement",
+                "unit": "users",
+                "target_value": 10.0,
+            },
+        ]
+
+        kpis = []
+        for kpi_data in kpis_data:
+            kpi = KPIIndicator(
+                id=uuid.uuid4(),
+                org_id=self.org.id,
+                name=kpi_data["name"],
+                description=kpi_data["description"],
+                category=kpi_data["category"],
+                unit=kpi_data["unit"],
+                target_value=kpi_data["target_value"],
+                current_value=0.0,
+                measurement_type="manual",
+                frequency="weekly",
+                owner_id=self.user.id,
+                is_active=True,
+            )
+            self.session.add(kpi)
+            kpis.append(kpi)
+            self.created_entities["kpi_indicators"].append(kpi)
+
+        return kpis
+
+    async def _create_sample_links(
+        self,
+        events: List[CalendarEvent],
+        tasks: List[Task],
+        key_results: List[KeyResult],
+        kpis: List[KPIIndicator]
+    ) -> List[EventLink]:
+        """Create sample EventLinks between entities"""
+        if not (events and tasks and key_results and kpis):
+            return []
+
+        links_data = [
+            # Link first event to first KPI
+            {
+                "event_id": events[0].id,
+                "kpi_indicator_id": kpis[0].id,
+                "link_type": LinkType.CONTRIBUTES,
+                "weight": 0.5,
+                "notes": "Welcome meeting contributes to team productivity",
+            },
+            # Link first task to first key result
+            {
+                "task_id": tasks[0].id,
+                "okr_kr_id": key_results[0].id,
+                "link_type": LinkType.CONTRIBUTES,
+                "weight": 0.33,
+                "notes": "Exploring features counts toward completing first project",
+            },
+            # Link second task to first key result
+            {
+                "task_id": tasks[1].id,
+                "okr_kr_id": key_results[0].id,
+                "link_type": LinkType.CONTRIBUTES,
+                "weight": 0.33,
+                "notes": "Setting goals is part of project completion",
+            },
+        ]
+
+        links = []
+        for link_data in links_data:
+            link = EventLink(
+                id=uuid.uuid4(),
+                event_id=link_data.get("event_id"),
+                task_id=link_data.get("task_id"),
+                project_id=link_data.get("project_id"),
+                okr_kr_id=link_data.get("okr_kr_id"),
+                kpi_indicator_id=link_data.get("kpi_indicator_id"),
+                link_type=link_data["link_type"].value,
+                weight=link_data["weight"],
+                auto_update=True,
+                is_active=True,
+                notes=link_data.get("notes"),
+            )
+            self.session.add(link)
+            links.append(link)
+            self.created_entities["event_links"].append(link)
+
+        return links
+
+
+class MarketingTemplate(DefaultTemplate):
+    """Marketing team focused template"""
+
+    async def _create_sample_project(self) -> Project:
+        """Create marketing-focused project"""
+        project = Project(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            name="Q1 Marketing Campaign",
+            description="Launch new product marketing campaign",
+            status=ProjectStatus.ACTIVE,
+            progress=0,
+            created_by=self.user.id,
+            is_public=True,
+            start_date=self._now(),
+            end_date=self._days_from_now(90),
+        )
+        self.session.add(project)
+        self.created_entities["projects"].append(project)
+        return project
+
+    async def _create_sample_tasks(self, project: Project) -> List[Task]:
+        """Create marketing-specific tasks"""
+        tasks_data = [
+            {
+                "title": "Content Calendar Planning",
+                "description": "Plan Q1 content across all channels",
+                "status": TaskStatus.IN_PROGRESS,
+                "priority": TaskPriority.HIGH,
+                "progress": 30,
+            },
+            {
+                "title": "Social Media Campaign Setup",
+                "description": "Configure ads on Facebook, LinkedIn, Twitter",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.HIGH,
+                "progress": 0,
+            },
+            {
+                "title": "Email Marketing Sequence",
+                "description": "Create 5-email nurture sequence",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.MEDIUM,
+                "progress": 0,
+            },
+            {
+                "title": "Landing Page Optimization",
+                "description": "A/B test landing page variants",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.MEDIUM,
+                "progress": 0,
+            },
+        ]
+
+        tasks = []
+        for idx, task_data in enumerate(tasks_data):
+            task = Task(
+                id=uuid.uuid4(),
+                org_id=self.org.id,
+                project_id=project.id,
+                title=task_data["title"],
+                description=task_data["description"],
+                status=task_data["status"],
+                priority=task_data["priority"],
+                progress_percentage=task_data["progress"],
+                created_by=self.user.id,
+                assigned_to=self.user.id,
+                due_date=self._days_from_now(7 + idx * 7),
+            )
+            self.session.add(task)
+            tasks.append(task)
+            self.created_entities["tasks"].append(task)
+
+        return tasks
+
+    async def _create_sample_okr(self) -> tuple[Objective, List[KeyResult]]:
+        """Create marketing-focused OKR"""
+        objective = Objective(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            title="Grow Brand Awareness and Leads",
+            description="Increase market presence and generate qualified leads",
+            owner_id=self.user.id,
+            status=OKRStatus.ON_TRACK,
+            progress=0,
+            start_date=self._now(),
+            end_date=self._days_from_now(90),
+            is_public=True,
+        )
+        self.session.add(objective)
+        self.created_entities["objectives"].append(objective)
+
+        kr_data = [
+            {"title": "Generate 1000 qualified leads", "target_value": 1000, "unit": "leads"},
+            {"title": "Achieve 50k website visitors", "target_value": 50000, "unit": "visitors"},
+            {"title": "Grow social media following by 25%", "target_value": 25, "unit": "percent"},
+        ]
+
+        key_results = []
+        for kr in kr_data:
+            key_result = KeyResult(
+                id=uuid.uuid4(),
+                objective_id=objective.id,
+                org_id=self.org.id,
+                title=kr["title"],
+                owner_id=self.user.id,
+                status=KRStatus.NOT_STARTED,
+                start_value=0,
+                current_value=0,
+                target_value=kr["target_value"],
+                unit=kr["unit"],
+                progress=0,
+                weight=1.0,
+                is_public=True,
+            )
+            self.session.add(key_result)
+            key_results.append(key_result)
+            self.created_entities["key_results"].append(key_result)
+
+        return objective, key_results
+
+
+class SoftwareTemplate(DefaultTemplate):
+    """Software development team template"""
+
+    async def _create_sample_project(self) -> Project:
+        """Create software project"""
+        project = Project(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            name="Product Feature Development",
+            description="Sprint 1: User authentication and onboarding",
+            status=ProjectStatus.ACTIVE,
+            progress=0,
+            created_by=self.user.id,
+            is_public=False,
+            start_date=self._now(),
+            end_date=self._days_from_now(14),  # 2-week sprint
+        )
+        self.session.add(project)
+        self.created_entities["projects"].append(project)
+        return project
+
+    async def _create_sample_tasks(self, project: Project) -> List[Task]:
+        """Create software development tasks"""
+        tasks_data = [
+            {
+                "title": "Design authentication flow",
+                "description": "Create UX wireframes and user flow diagrams",
+                "status": TaskStatus.DONE,
+                "priority": TaskPriority.HIGH,
+                "progress": 100,
+            },
+            {
+                "title": "Implement JWT authentication",
+                "description": "Backend API for login, refresh, logout",
+                "status": TaskStatus.IN_PROGRESS,
+                "priority": TaskPriority.HIGH,
+                "progress": 60,
+            },
+            {
+                "title": "Build onboarding UI screens",
+                "description": "React components for multi-step onboarding",
+                "status": TaskStatus.IN_PROGRESS,
+                "priority": TaskPriority.HIGH,
+                "progress": 40,
+            },
+            {
+                "title": "Write unit tests",
+                "description": "Achieve 80% code coverage",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.MEDIUM,
+                "progress": 0,
+            },
+            {
+                "title": "Code review and deployment",
+                "description": "Review, merge, and deploy to staging",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.MEDIUM,
+                "progress": 0,
+            },
+        ]
+
+        tasks = []
+        for idx, task_data in enumerate(tasks_data):
+            task = Task(
+                id=uuid.uuid4(),
+                org_id=self.org.id,
+                project_id=project.id,
+                title=task_data["title"],
+                description=task_data["description"],
+                status=task_data["status"],
+                priority=task_data["priority"],
+                progress_percentage=task_data["progress"],
+                created_by=self.user.id,
+                assigned_to=self.user.id,
+                due_date=self._days_from_now(2 + idx * 2),
+            )
+            self.session.add(task)
+            tasks.append(task)
+            self.created_entities["tasks"].append(task)
+
+        return tasks
+
+    async def _create_sample_okr(self) -> tuple[Objective, List[KeyResult]]:
+        """Create software development OKR"""
+        objective = Objective(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            title="Deliver High-Quality Product Features",
+            description="Ship features on time with minimal bugs",
+            owner_id=self.user.id,
+            status=OKRStatus.ON_TRACK,
+            progress=0,
+            start_date=self._now(),
+            end_date=self._days_from_now(90),
+            is_public=True,
+        )
+        self.session.add(objective)
+        self.created_entities["objectives"].append(objective)
+
+        kr_data = [
+            {"title": "Deploy 5 major features", "target_value": 5, "unit": "features"},
+            {"title": "Maintain 80% test coverage", "target_value": 80, "unit": "percent"},
+            {"title": "Reduce bug count by 50%", "target_value": 50, "unit": "percent"},
+        ]
+
+        key_results = []
+        for kr in kr_data:
+            key_result = KeyResult(
+                id=uuid.uuid4(),
+                objective_id=objective.id,
+                org_id=self.org.id,
+                title=kr["title"],
+                owner_id=self.user.id,
+                status=KRStatus.NOT_STARTED,
+                start_value=0,
+                current_value=0,
+                target_value=kr["target_value"],
+                unit=kr["unit"],
+                progress=0,
+                weight=1.0,
+                is_public=True,
+            )
+            self.session.add(key_result)
+            key_results.append(key_result)
+            self.created_entities["key_results"].append(key_result)
+
+        return objective, key_results
+
+
+class EmptyTemplate(OnboardingTemplate):
+    """Empty template - no sample data"""
+
+    async def create_all(self) -> Dict[str, Any]:
+        """Create only default calendar, no sample data"""
+        logger.info(f"Creating empty template for user {self.user.id}")
+
+        # Create only default calendar
+        calendar = Calendar(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            owner_id=self.user.id,
+            name="My Calendar",
+            description="Personal calendar",
+            color="#3174ad",
+            is_default=True,
+            is_public=False,
+            is_active=True,
+            timezone="UTC",
+            default_reminder_minutes=15,
+        )
+        self.session.add(calendar)
+        self.created_entities["calendars"].append(calendar)
+
+        await self.session.commit()
+
+        return {
+            "template": "empty",
+            "created": {
+                "calendars": 1,
+                "events": 0,
+                "projects": 0,
+                "tasks": 0,
+                "objectives": 0,
+                "key_results": 0,
+                "kpi_indicators": 0,
+                "event_links": 0,
+            }
+        }
+
+
+class SalesTemplate(DefaultTemplate):
+    """Sales and CRM focused template"""
+
+    async def _create_sample_project(self) -> Project:
+        """Create sales-focused project"""
+        project = Project(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            name="Q1 Sales Pipeline",
+            description="Grow revenue and close key deals",
+            status=ProjectStatus.ACTIVE,
+            progress=0,
+            created_by=self.user.id,
+            is_public=True,
+            start_date=self._now(),
+            end_date=self._days_from_now(90),
+        )
+        self.session.add(project)
+        self.created_entities["projects"].append(project)
+        return project
+
+    async def _create_sample_tasks(self, project: Project) -> List[Task]:
+        """Create sales-specific tasks"""
+        tasks_data = [
+            {
+                "title": "Qualify 20 new leads",
+                "description": "Review inbound leads and qualify for sales process",
+                "status": TaskStatus.IN_PROGRESS,
+                "priority": TaskPriority.HIGH,
+                "progress": 45,
+            },
+            {
+                "title": "Schedule 10 demo calls",
+                "description": "Book product demos with qualified prospects",
+                "status": TaskStatus.IN_PROGRESS,
+                "priority": TaskPriority.HIGH,
+                "progress": 30,
+            },
+            {
+                "title": "Close 3 enterprise deals",
+                "description": "Negotiate and close contracts with key accounts",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.HIGH,
+                "progress": 0,
+            },
+            {
+                "title": "Update CRM with call notes",
+                "description": "Document all customer interactions",
+                "status": TaskStatus.TODO,
+                "priority": TaskPriority.MEDIUM,
+                "progress": 0,
+            },
+        ]
+
+        tasks = []
+        for idx, task_data in enumerate(tasks_data):
+            task = Task(
+                id=uuid.uuid4(),
+                org_id=self.org.id,
+                project_id=project.id,
+                title=task_data["title"],
+                description=task_data["description"],
+                status=task_data["status"],
+                priority=task_data["priority"],
+                progress_percentage=task_data["progress"],
+                created_by=self.user.id,
+                assigned_to=self.user.id,
+                due_date=self._days_from_now(7 + idx * 7),
+            )
+            self.session.add(task)
+            tasks.append(task)
+            self.created_entities["tasks"].append(task)
+
+        return tasks
+
+    async def _create_sample_okr(self) -> tuple[Objective, List[KeyResult]]:
+        """Create sales-focused OKR"""
+        objective = Objective(
+            id=uuid.uuid4(),
+            org_id=self.org.id,
+            title="Accelerate Revenue Growth",
+            description="Increase MRR and expand customer base",
+            owner_id=self.user.id,
+            status=OKRStatus.ON_TRACK,
+            progress=0,
+            start_date=self._now(),
+            end_date=self._days_from_now(90),
+            is_public=True,
+        )
+        self.session.add(objective)
+        self.created_entities["objectives"].append(objective)
+
+        kr_data = [
+            {"title": "Achieve $50K in new MRR", "target_value": 50000, "unit": "dollars"},
+            {"title": "Close 15 new customers", "target_value": 15, "unit": "customers"},
+            {"title": "Increase win rate to 35%", "target_value": 35, "unit": "percent"},
+        ]
+
+        key_results = []
+        for kr in kr_data:
+            key_result = KeyResult(
+                id=uuid.uuid4(),
+                objective_id=objective.id,
+                org_id=self.org.id,
+                title=kr["title"],
+                owner_id=self.user.id,
+                status=KRStatus.NOT_STARTED,
+                start_value=0,
+                current_value=0,
+                target_value=kr["target_value"],
+                unit=kr["unit"],
+                progress=0,
+                weight=1.0,
+                is_public=True,
+            )
+            self.session.add(key_result)
+            key_results.append(key_result)
+            self.created_entities["key_results"].append(key_result)
+
+        return objective, key_results
+
+    async def _create_sample_kpis(self) -> List[KPIIndicator]:
+        """Create sales KPIs"""
+        kpis_data = [
+            {
+                "name": "Monthly Recurring Revenue",
+                "description": "Total MRR from active subscriptions",
+                "category": "Revenue",
+                "unit": "dollars",
+                "target_value": 100000.0,
+            },
+            {
+                "name": "Sales Pipeline Value",
+                "description": "Total value of all open opportunities",
+                "category": "Pipeline",
+                "unit": "dollars",
+                "target_value": 500000.0,
+            },
+            {
+                "name": "Average Deal Size",
+                "description": "Average contract value",
+                "category": "Revenue",
+                "unit": "dollars",
+                "target_value": 5000.0,
+            },
+        ]
+
+        kpis = []
+        for kpi_data in kpis_data:
+            kpi = KPIIndicator(
+                id=uuid.uuid4(),
+                org_id=self.org.id,
+                name=kpi_data["name"],
+                description=kpi_data["description"],
+                category=kpi_data["category"],
+                unit=kpi_data["unit"],
+                target_value=kpi_data["target_value"],
+                current_value=0.0,
+                measurement_type="manual",
+                frequency="weekly",
+                owner_id=self.user.id,
+                is_active=True,
+            )
+            self.session.add(kpi)
+            kpis.append(kpi)
+            self.created_entities["kpi_indicators"].append(kpi)
+
+        return kpis
+
+
+class OnboardingService:
+    """Service for creating sample data for new users"""
+
+    TEMPLATES = {
+        "business": DefaultTemplate,  # Renamed from "default"
+        "marketing": MarketingTemplate,
+        "software": SoftwareTemplate,
+        "sales": SalesTemplate,
+        "empty": EmptyTemplate,
+    }
+
+    TEMPLATE_INFO = {
+        "business": {
+            "name": "Business Management",
+            "description": "General business operations with projects, tasks, and goals",
+            "icon": "briefcase",
+            "ideal_for": "Teams managing general business operations",
+            "includes": [
+                "Sample project with tasks",
+                "OKR with key results",
+                "KPI dashboard",
+                "Calendar events",
+                "Progress tracking"
+            ],
+            "recommended_team_size": "5-50"
+        },
+        "marketing": {
+            "name": "Marketing & Campaigns",
+            "description": "Digital marketing campaigns, content planning, and lead generation",
+            "icon": "megaphone",
+            "ideal_for": "Marketing teams and agencies",
+            "includes": [
+                "Marketing campaign project",
+                "Content calendar tasks",
+                "Brand awareness OKRs",
+                "Lead generation KPIs",
+                "Campaign events"
+            ],
+            "recommended_team_size": "3-20"
+        },
+        "software": {
+            "name": "Software Development",
+            "description": "Agile sprints, feature development, and engineering workflows",
+            "icon": "code",
+            "ideal_for": "Engineering and product teams",
+            "includes": [
+                "Sprint project",
+                "Development tasks",
+                "Feature delivery OKRs",
+                "Quality KPIs",
+                "Sprint events"
+            ],
+            "recommended_team_size": "5-30"
+        },
+        "sales": {
+            "name": "Sales & CRM",
+            "description": "Pipeline management, deal tracking, and revenue goals",
+            "icon": "chart-up",
+            "ideal_for": "Sales teams and account managers",
+            "includes": [
+                "Sales pipeline project",
+                "Deal qualification tasks",
+                "Revenue growth OKRs",
+                "Sales KPIs",
+                "Client meeting events"
+            ],
+            "recommended_team_size": "3-25"
+        },
+        "empty": {
+            "name": "Start from Scratch",
+            "description": "Clean slate with no sample data",
+            "icon": "file-blank",
+            "ideal_for": "Experienced users who prefer to build from scratch",
+            "includes": [
+                "Empty workspace",
+                "Default calendar only"
+            ],
+            "recommended_team_size": "Any"
+        }
+    }
+
+    @classmethod
+    def get_template_info(cls, template: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get information about available templates
+
+        Args:
+            template: Specific template name, or None for all templates
+
+        Returns:
+            Template info dict or dict of all templates
+        """
+        if template:
+            return cls.TEMPLATE_INFO.get(template, cls.TEMPLATE_INFO["business"])
+        return cls.TEMPLATE_INFO
+
+    @classmethod
+    async def create_sample_data_for_user(
+        cls,
+        user_id: UUID,
+        org_id: UUID,
+        session: AsyncSession,
+        template: str = "business"
+    ) -> Dict[str, Any]:
+        """
+        Create sample data for a new user
+
+        Args:
+            user_id: User UUID
+            org_id: Organization UUID
+            session: Database session
+            template: Template name (business, marketing, software, sales, empty)
+
+        Returns:
+            Dict with created entities count and template info
+        """
+        # Validate template
+        if template not in cls.TEMPLATES:
+            logger.warning(f"Unknown template {template}, using business")
+            template = "business"
+
+        # Load user and org
+        user = (await session.execute(
+            select(User).where(User.id == user_id)
+        )).scalar_one_or_none()
+
+        org = (await session.execute(
+            select(Organization).where(Organization.id == org_id)
+        )).scalar_one_or_none()
+
+        if not user or not org:
+            logger.error(f"User {user_id} or org {org_id} not found")
+            raise ValueError("User or organization not found")
+
+        # Create template instance and generate data
+        template_class = cls.TEMPLATES[template]
+        template_instance = template_class(user, org, session)
+
+        result = await template_instance.create_all()
+
+        logger.info(
+            f"Onboarding complete for user {user_id}: "
+            f"template={template}, created={result['created']}"
+        )
+
+        return result

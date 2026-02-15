@@ -1,0 +1,20 @@
+# dependencies / build
+node_modules/
+.next/
+out/
+dist/
+
+# env
+.env
+.env.*
+.env.local
+
+# local snapshots
+/_server_snapshots/
+
+# local workspace
+*.code-workspace
+
+# misc
+.DS_Store
+*.log
