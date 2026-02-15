@@ -5,9 +5,12 @@ type FormatOptions = {
 
 type MoneyOptions = FormatOptions & {
   currencyCode?: string
+  compact?: boolean
+  compactDigits?: number
 }
 
 const DEFAULT_CURRENCY_CODE = "UAH"
+const DEFAULT_COMPACT_DIGITS = 1
 
 const detectCurrencyCode = (raw: string): string | null => {
   const lower = raw.toLowerCase()
@@ -49,10 +52,48 @@ const numberFormatter = (options?: FormatOptions) =>
     maximumFractionDigits: options?.maximumFractionDigits ?? 2,
   })
 
+const formatCompactValue = (value: number, digits: number = DEFAULT_COMPACT_DIGITS) => {
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000_000) {
+    return `${(value / 1_000_000_000).toFixed(digits)}B`
+  }
+  if (abs >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(digits)}M`
+  }
+  if (abs >= 1_000) {
+    return `${(value / 1_000).toFixed(digits)}K`
+  }
+  return numberFormatter({ maximumFractionDigits: digits }).format(value)
+}
+
+const currencySymbol = (currencyCode: string) => {
+  switch (currencyCode) {
+    case "UAH":
+      return "₴"
+    case "USD":
+      return "$"
+    case "EUR":
+      return "€"
+    case "RUB":
+      return "₽"
+    default:
+      return `${currencyCode} `
+  }
+}
+
 export const formatNumber = (value: number | string | null | undefined, options?: FormatOptions) => {
   const parsed = parseNumeric(value)
   if (parsed == null) return "—"
   return numberFormatter(options).format(parsed)
+}
+
+export const formatCompactNumber = (
+  value: number | string | null | undefined,
+  options?: { digits?: number }
+) => {
+  const parsed = parseNumeric(value)
+  if (parsed == null) return "—"
+  return formatCompactValue(parsed, options?.digits ?? DEFAULT_COMPACT_DIGITS)
 }
 
 export const formatCurrency = (value: number | string | null | undefined, options?: MoneyOptions) => {
@@ -61,6 +102,10 @@ export const formatCurrency = (value: number | string | null | undefined, option
   let currencyCode = options?.currencyCode ?? DEFAULT_CURRENCY_CODE
   if (typeof value === "string") {
     currencyCode = detectCurrencyCode(value) ?? currencyCode
+  }
+  if (options?.compact) {
+    const compactDigits = options.compactDigits ?? DEFAULT_COMPACT_DIGITS
+    return `${currencySymbol(currencyCode)}${formatCompactValue(parsed, compactDigits)}`
   }
   return new Intl.NumberFormat("uk-UA", {
     style: "currency",
@@ -72,12 +117,13 @@ export const formatCurrency = (value: number | string | null | undefined, option
 
 export const formatPercent = (
   value: number | string | null | undefined,
-  options?: { digits?: number; assumeRatio?: boolean }
+  options?: number | { digits?: number; assumeRatio?: boolean }
 ) => {
   const parsed = parseNumeric(value)
   if (parsed == null) return "—"
-  const digits = options?.digits ?? 1
-  const assumeRatio = options?.assumeRatio ?? true
+  const normalizedOptions = typeof options === "number" ? { digits: options } : options
+  const digits = normalizedOptions?.digits ?? 1
+  const assumeRatio = normalizedOptions?.assumeRatio ?? true
   const normalized = assumeRatio && Math.abs(parsed) <= 1 ? parsed * 100 : parsed
   return `${normalized.toFixed(digits)}%`
 }

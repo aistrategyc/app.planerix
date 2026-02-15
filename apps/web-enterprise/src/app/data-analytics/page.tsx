@@ -1,26 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { DataQualityAPI, FreshnessItem, AgentReadyItem } from "@/lib/api/data-quality"
-import { AnalyticsFilters, AnalyticsFiltersValue } from "@/app/analytics/components/AnalyticsFilters"
-import { useCities } from "@/app/analytics/hooks/use_cities"
-import { buildLastWeekRange, resolveDefaultCityId } from "@/app/analytics/utils/defaults"
-import { AnalyticsEmptyState } from "@/components/analytics/AnalyticsEmptyState"
-import { fetchWidget, fetchWidgetRange, WidgetRow } from "@/lib/api/analytics-widgets"
+import { DataQualityAPI, FreshnessItem, AgentReadyItem, CoverageResponse } from "@/lib/api/data-quality"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/contexts/auth-context"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { PageHeader } from "@/components/layout/PageHeader"
 
 const formatCurrency = (value: number | null | undefined) => {
@@ -77,63 +65,18 @@ const formatLag = (value: number | null) => {
   return `${value.toFixed(1)}h`
 }
 
-const toDateInput = (value: Date | undefined) => (value ? value.toISOString().slice(0, 10) : undefined)
-
-const pickRowValue = (row: WidgetRow, keys: string[]) => {
-  for (const key of keys) {
-    const value = row[key]
-    if (value !== null && value !== undefined && value !== "") {
-      return value
-    }
-  }
-  return null
-}
-
-const metricNumber = (row: WidgetRow, keys: string[]) => {
-  const value = pickRowValue(row, keys)
-  if (typeof value === "number") return value
-  const parsed = Number(value)
-  return Number.isNaN(parsed) ? null : parsed
-}
-
 export default function DataAnalyticsPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const canFetch = isAuthenticated && !authLoading
-  const { cities } = useCities()
-  const today = useMemo(() => new Date(), [])
-  const defaultFrom = useMemo(() => {
-    const date = new Date()
-    date.setDate(date.getDate() - 6)
-    return date
-  }, [])
-
-  const initialGa4Filters = useMemo<AnalyticsFiltersValue>(
-    () => ({
-      dateRange: { from: defaultFrom, to: today },
-      cityId: "all",
-      platform: "all",
-      product: "",
-      branch: "",
-      source: "",
-    }),
-    [defaultFrom, today]
-  )
-  const [draftGa4Filters, setDraftGa4Filters] = useState<AnalyticsFiltersValue>(initialGa4Filters)
-  const [appliedGa4Filters, setAppliedGa4Filters] = useState<AnalyticsFiltersValue>(initialGa4Filters)
 
   const [freshness, setFreshness] = useState<FreshnessItem[]>([])
   const [agentReady, setAgentReady] = useState<AgentReadyItem[]>([])
+  const [coverage, setCoverage] = useState<CoverageResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAllFreshness, setShowAllFreshness] = useState(false)
   const [showAllAgents, setShowAllAgents] = useState(false)
-
-  const [ga4TrafficRows, setGa4TrafficRows] = useState<WidgetRow[]>([])
-  const [ga4EventsRows, setGa4EventsRows] = useState<WidgetRow[]>([])
-  const [ga4CreativeRows, setGa4CreativeRows] = useState<WidgetRow[]>([])
-  const [ga4UtmRows, setGa4UtmRows] = useState<WidgetRow[]>([])
-  const [ga4Loading, setGa4Loading] = useState(false)
-  const [ga4Loaded, setGa4Loaded] = useState(false)
+  const [showAllCoverage, setShowAllCoverage] = useState(false)
 
   useEffect(() => {
     let isActive = true
@@ -142,13 +85,21 @@ export default function DataAnalyticsPage() {
       try {
         if (!canFetch) return
         setIsLoading(true)
-        const [freshnessItems, agentReadyItems] = await Promise.all([
+        const dateTo = new Date()
+        const dateFrom90 = new Date(dateTo.getTime() - 90 * 864e5)
+        const [freshnessItems, agentReadyItems, coverageRes] = await Promise.all([
           DataQualityAPI.getFreshness({ limit: 200 }),
           DataQualityAPI.getAgentReady({ limit: 200 }),
+          DataQualityAPI.getCoverage({
+            date_from: dateFrom90.toISOString().slice(0, 10),
+            date_to: dateTo.toISOString().slice(0, 10),
+            limit_views: 40,
+          }),
         ])
         if (!isActive) return
         setFreshness(freshnessItems)
         setAgentReady(agentReadyItems)
+        setCoverage(coverageRes ?? null)
         setError(null)
       } catch (err) {
         if (!isActive) return
@@ -163,90 +114,6 @@ export default function DataAnalyticsPage() {
       isActive = false
     }
   }, [canFetch])
-
-  const ga4Params = useMemo(
-    () => ({
-      date_from: toDateInput(appliedGa4Filters.dateRange.from),
-      date_to: toDateInput(appliedGa4Filters.dateRange.to),
-      id_city: appliedGa4Filters.cityId !== "all" ? Number(appliedGa4Filters.cityId) : undefined,
-    }),
-    [appliedGa4Filters]
-  )
-
-  useEffect(() => {
-    let active = true
-    const loadGa4 = async () => {
-      if (!canFetch) return
-      setGa4Loading(true)
-      try {
-        const [traffic, events, creatives, utm] = await Promise.all([
-          fetchWidget("ga4.traffic_overview_daily", { ...ga4Params, limit: 200 }),
-          fetchWidget("ga4.events_conversions_daily", { ...ga4Params, limit: 200, order_by: "-conversions" }),
-          fetchWidget("ga4.ads_creative_performance_daily", { ...ga4Params, limit: 200, order_by: "-spend" }),
-          fetchWidget("ga4.utm_daily", { ...ga4Params, limit: 200, order_by: "-sessions" }),
-        ])
-        if (!active) return
-        setGa4TrafficRows(traffic.items)
-        setGa4EventsRows(events.items)
-        setGa4CreativeRows(creatives.items)
-        setGa4UtmRows(utm.items)
-      } catch (err) {
-        if (!active) return
-        setError(err instanceof Error ? err.message : "Failed to load GA4 widgets")
-      } finally {
-        if (active) {
-          setGa4Loading(false)
-          setGa4Loaded(true)
-        }
-      }
-    }
-    loadGa4()
-    return () => {
-      active = false
-    }
-  }, [ga4Params, canFetch])
-
-  useEffect(() => {
-    let active = true
-    const hydrateRange = async () => {
-      try {
-        if (!canFetch) return
-        const range = await fetchWidgetRange("ga4.traffic_overview_daily")
-        if (!active) return
-        const dateRange = buildLastWeekRange(range.max_date)
-        if (!dateRange) return
-        const nextFilters: AnalyticsFiltersValue = {
-          ...initialGa4Filters,
-          dateRange,
-        }
-        setDraftGa4Filters(nextFilters)
-        setAppliedGa4Filters(nextFilters)
-      } catch {
-        // fallback to default range
-      }
-    }
-    hydrateRange()
-    return () => {
-      active = false
-    }
-  }, [initialGa4Filters, canFetch])
-
-  useEffect(() => {
-    if (draftGa4Filters.cityId !== "all") return
-    const cityId = resolveDefaultCityId(cities)
-    if (!cityId) return
-    setDraftGa4Filters((prev) => ({ ...prev, cityId: String(cityId) }))
-    setAppliedGa4Filters((prev) => ({ ...prev, cityId: String(cityId) }))
-  }, [cities, draftGa4Filters.cityId])
-
-  const applyGa4Filters = () => {
-    setAppliedGa4Filters(draftGa4Filters)
-  }
-
-  const resetGa4Filters = () => {
-    setDraftGa4Filters(initialGa4Filters)
-    setAppliedGa4Filters(initialGa4Filters)
-  }
 
   const freshnessRows = useMemo(
     () => (showAllFreshness ? freshness : freshness.slice(0, 20)),
@@ -280,61 +147,6 @@ export default function DataAnalyticsPage() {
     }
   }, [freshness, agentReady])
 
-  const ga4Summary = useMemo(() => {
-    const totals = ga4TrafficRows.reduce(
-      (acc, row) => {
-        acc.sessions += metricNumber(row, ["sessions", "session_cnt", "session_count"]) ?? 0
-        acc.activeUsers += metricNumber(row, ["active_users", "activeUsers"]) ?? 0
-        acc.newUsers += metricNumber(row, ["new_users", "newUsers"]) ?? 0
-        acc.engagedSessions += metricNumber(row, ["engaged_sessions", "engagedSessions"]) ?? 0
-        acc.conversions += metricNumber(row, ["conversions", "conversion_cnt"]) ?? 0
-        acc.revenue += metricNumber(row, ["revenue", "purchase_revenue"]) ?? 0
-        return acc
-      },
-      { sessions: 0, activeUsers: 0, newUsers: 0, engagedSessions: 0, conversions: 0, revenue: 0 }
-    )
-    const engagementRate = totals.sessions > 0 ? totals.engagedSessions / totals.sessions : null
-    return { ...totals, engagementRate }
-  }, [ga4TrafficRows])
-
-  const ga4UtmDisplay = useMemo(() => {
-    return [...ga4UtmRows]
-      .map((row) => ({
-        source: pickRowValue(row, ["source", "utm_source"]) ?? "Unknown",
-        medium: pickRowValue(row, ["medium", "utm_medium"]) ?? "—",
-        sessions: metricNumber(row, ["sessions", "session_cnt"]) ?? 0,
-        conversions: metricNumber(row, ["conversions", "conversion_cnt"]) ?? 0,
-        revenue: metricNumber(row, ["revenue", "purchase_revenue"]) ?? 0,
-      }))
-      .sort((a, b) => b.sessions - a.sessions)
-      .slice(0, 10)
-  }, [ga4UtmRows])
-
-  const ga4EventsDisplay = useMemo(() => {
-    return [...ga4EventsRows]
-      .map((row) => ({
-        eventName: pickRowValue(row, ["event_name", "event"]) ?? "Event",
-        conversions: metricNumber(row, ["conversions", "conversion_cnt"]) ?? 0,
-        revenue: metricNumber(row, ["revenue", "purchase_revenue"]) ?? 0,
-      }))
-      .sort((a, b) => b.conversions - a.conversions)
-      .slice(0, 12)
-  }, [ga4EventsRows])
-
-  const ga4CreativeDisplay = useMemo(() => {
-    return [...ga4CreativeRows]
-      .map((row) => ({
-        campaign: pickRowValue(row, ["campaign_name", "campaign"]) ?? "Campaign",
-        adGroup: pickRowValue(row, ["ad_group_name", "ad_group"]) ?? "Ad group",
-        creative: pickRowValue(row, ["creative_name", "creative"]) ?? "Creative",
-        sessions: metricNumber(row, ["sessions", "session_cnt"]) ?? 0,
-        conversions: metricNumber(row, ["conversions", "conversion_cnt"]) ?? 0,
-        revenue: metricNumber(row, ["revenue", "purchase_revenue"]) ?? 0,
-      }))
-      .sort((a, b) => b.conversions - a.conversions)
-      .slice(0, 8)
-  }, [ga4CreativeRows])
-
   const criticalSources = useMemo(() => {
     return freshness
       .map((row) => ({ row, status: resolveStatus(row.last_ts) }))
@@ -343,11 +155,21 @@ export default function DataAnalyticsPage() {
       .slice(0, 6)
   }, [freshness])
 
+  const paidCoverage = coverage?.paid_contracts_creatives?.total ?? null
+  const paidByPlatform = coverage?.paid_contracts_creatives?.by_platform ?? []
+  const cityCoverageAll = coverage?.city_id_coverage?.items ?? []
+  const cityCoverageRows = useMemo(() => {
+    const rows = [...cityCoverageAll]
+    rows.sort((a, b) => (b.city_null_ratio ?? -1) - (a.city_null_ratio ?? -1))
+    return showAllCoverage ? rows : rows.slice(0, 20)
+  }, [cityCoverageAll, showAllCoverage])
+  const cityCoverageBad = useMemo(() => cityCoverageAll.filter((r) => (r.city_null_ratio ?? 0) >= 0.05).length, [cityCoverageAll])
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Data Analytics"
-        description="Freshness and readiness signals from itstep_final."
+        description="Data health hub: freshness, agent readiness, and diagnostics. GA4 moved to /ads and /marketing."
         meta={<Badge variant="outline">itstep_final</Badge>}
       />
 
@@ -355,171 +177,6 @@ export default function DataAnalyticsPage() {
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )}
-
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">GA4 Overview</h2>
-          <p className="text-sm text-muted-foreground">
-            Основні показники трафіку, конверсій і UTM-джерел.
-          </p>
-        </div>
-        <AnalyticsFilters
-          value={draftGa4Filters}
-          onDateChange={(value) => setDraftGa4Filters((prev) => ({ ...prev, dateRange: value }))}
-          onCityChange={(value) => setDraftGa4Filters((prev) => ({ ...prev, cityId: value }))}
-          onPlatformChange={(value) => setDraftGa4Filters((prev) => ({ ...prev, platform: value }))}
-          onApply={applyGa4Filters}
-          onReset={resetGa4Filters}
-          isLoading={ga4Loading}
-          showPlatform={false}
-          showProduct={false}
-          showBranch={false}
-          showSource={false}
-        />
-      </div>
-
-      {ga4Loaded && ga4TrafficRows.length === 0 ? (
-        <AnalyticsEmptyState
-          title="GA4 data empty"
-          description="Немає даних GA4 у вибраному періоді."
-          context="analytics"
-          size="sm"
-        />
-      ) : (
-        <>
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle>GA4 KPI</CardTitle>
-              <CardDescription>Сумарні показники за період.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-sm text-muted-foreground">Sessions</div>
-                <div className="text-2xl font-semibold">{formatNumber(ga4Summary.sessions)}</div>
-              </div>
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-sm text-muted-foreground">Active users</div>
-                <div className="text-2xl font-semibold">{formatNumber(ga4Summary.activeUsers)}</div>
-              </div>
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-sm text-muted-foreground">New users</div>
-                <div className="text-2xl font-semibold">{formatNumber(ga4Summary.newUsers)}</div>
-              </div>
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-sm text-muted-foreground">Conversions</div>
-                <div className="text-2xl font-semibold">{formatNumber(ga4Summary.conversions)}</div>
-              </div>
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-sm text-muted-foreground">Revenue</div>
-                <div className="text-2xl font-semibold">{formatCurrency(ga4Summary.revenue)}</div>
-              </div>
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-sm text-muted-foreground">Engagement rate</div>
-                <div className="text-2xl font-semibold">{formatPercent(ga4Summary.engagementRate ?? null)}</div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
-            <Card className="glass-card">
-              <CardHeader>
-                <CardTitle>GA4 UTM sources</CardTitle>
-                <CardDescription>Сессии и конверсии по источникам.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2">
-                {ga4UtmDisplay.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">Нет данных UTM.</div>
-                ) : (
-                  ga4UtmDisplay.map((row) => (
-                    <div key={`${row.source}-${row.medium}`} className="rounded-xl border border-border bg-card/40 p-4">
-                      <div className="text-sm font-semibold">{row.source}</div>
-                      <div className="text-xs text-muted-foreground">{row.medium}</div>
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                        <div>
-                          <div className="text-xs text-muted-foreground">Sessions</div>
-                          <div className="font-semibold">{formatNumber(row.sessions)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">Conv</div>
-                          <div className="font-semibold">{formatNumber(row.conversions)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">Revenue</div>
-                          <div className="font-semibold">{formatCurrency(row.revenue)}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="glass-card">
-              <CardHeader>
-                <CardTitle>Top events</CardTitle>
-                <CardDescription>Конверсии по событиям.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {ga4EventsDisplay.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">Нет событий GA4.</div>
-                ) : (
-                  <Table wrapperClassName="glass-table">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Event</TableHead>
-                        <TableHead className="text-right">Conversions</TableHead>
-                        <TableHead className="text-right">Revenue</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {ga4EventsDisplay.map((row) => (
-                        <TableRow key={row.eventName}>
-                          <TableCell>{row.eventName}</TableCell>
-                          <TableCell className="text-right">{formatNumber(row.conversions)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(row.revenue)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle>GA4 Ads creatives</CardTitle>
-              <CardDescription>Топ креативів за конверсіями.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2">
-              {ga4CreativeDisplay.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Нет данных по креативам.</div>
-              ) : (
-                ga4CreativeDisplay.map((row, index) => (
-                  <div key={`${row.campaign}-${row.creative}-${index}`} className="rounded-xl border border-border bg-card/40 p-4">
-                    <div className="text-sm font-semibold">{row.creative}</div>
-                    <div className="text-xs text-muted-foreground">{row.campaign} · {row.adGroup}</div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <div className="text-xs text-muted-foreground">Sessions</div>
-                        <div className="font-semibold">{formatNumber(row.sessions)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted-foreground">Conv</div>
-                        <div className="font-semibold">{formatNumber(row.conversions)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted-foreground">Revenue</div>
-                        <div className="font-semibold">{formatCurrency(row.revenue)}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </>
       )}
 
       <Card className="glass-card">
@@ -554,6 +211,119 @@ export default function DataAnalyticsPage() {
             <div className="text-2xl font-semibold">{formatNumber(summary.agentReadyCount)}</div>
             <div className="text-xs text-muted-foreground mt-1">
               Строк готовности: {formatNumber(agentReady.length)}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="glass-card">
+        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Coverage</CardTitle>
+            <CardDescription>Покрытие `city_id` в sem_ui витринах и привязка креативов для paid-контрактов.</CardDescription>
+          </div>
+          {cityCoverageAll.length > 20 && (
+            <Button size="sm" variant="outline" onClick={() => setShowAllCoverage((prev) => !prev)}>
+              {showAllCoverage ? "Collapse" : "Show all"}
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold">Paid contracts: creative/preview</div>
+              {coverage?.meta?.paid_query_ms != null && (
+                <Badge variant="outline">{coverage.meta.paid_query_ms}ms</Badge>
+              )}
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-border/60 bg-card/40 p-3">
+                <div className="text-xs text-muted-foreground">Creative coverage</div>
+                <div className="text-xl font-semibold">{formatPercent(paidCoverage?.creative_ratio ?? null)}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {formatNumber(paidCoverage?.with_creative ?? null)} / {formatNumber(paidCoverage?.paid_rows ?? null)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/60 bg-card/40 p-3">
+                <div className="text-xs text-muted-foreground">Preview coverage</div>
+                <div className="text-xl font-semibold">{formatPercent(paidCoverage?.preview_ratio ?? null)}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {formatNumber(paidCoverage?.with_preview ?? null)} / {formatNumber(paidCoverage?.paid_rows ?? null)}
+                </div>
+              </div>
+            </div>
+            {paidByPlatform.length > 0 && (
+              <div className="mt-4">
+                <div className="text-xs text-muted-foreground mb-2">By platform</div>
+                <div className="space-y-2">
+                  {paidByPlatform.map((row) => {
+                    const paid = row.paid_rows ?? 0
+                    const creativeRatio = paid > 0 ? (row.with_creative ?? 0) / paid : null
+                    const previewRatio = paid > 0 ? (row.with_preview ?? 0) / paid : null
+                    return (
+                      <div key={row.attributed_platform ?? "unknown"} className="flex items-center justify-between gap-3 text-sm">
+                        <div className="min-w-0">
+                          <div className="font-medium">{row.attributed_platform ?? "unknown"}</div>
+                          <div className="text-xs text-muted-foreground">Paid rows {formatNumber(row.paid_rows)}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">Creative {formatPercent(creativeRatio)}</Badge>
+                          <Badge variant="outline">Preview {formatPercent(previewRatio)}</Badge>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold">City ID NULL ratio (sem_ui)</div>
+              <Badge variant={cityCoverageBad > 0 ? "warning" : "success"}>
+                {cityCoverageBad > 0 ? `Issues ${cityCoverageBad}` : "OK"}
+              </Badge>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              Threshold: NULL share &lt; 5% per view (90d).
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>View</TableHead>
+                    <TableHead className="text-right">NULL</TableHead>
+                    <TableHead className="text-right">Rows</TableHead>
+                    <TableHead className="text-right">Max date</TableHead>
+                    <TableHead className="text-right">ms</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cityCoverageRows.map((row) => (
+                    <TableRow key={row.obj}>
+                      <TableCell className="font-mono text-xs">{row.obj}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={(row.city_null_ratio ?? 0) >= 0.05 ? "warning" : "outline"}>
+                          {formatPercent(row.city_null_ratio)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{formatNumber(row.rows_total)}</TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">{row.max_date ?? "—"}</TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {row.query_ms != null ? `${row.query_ms}` : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {cityCoverageRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-xs text-muted-foreground">
+                        Нет данных по покрытиям (endpoint /coverage недоступен или нет витрин с date+city колонками).
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </div>
           </div>
         </CardContent>

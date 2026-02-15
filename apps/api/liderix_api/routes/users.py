@@ -1,17 +1,17 @@
 # apps/api/liderix_api/routes/users.py
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 import logging
 
 from fastapi import (
-    APIRouter, Depends, HTTPException, status, Response, Request, 
-    Query, BackgroundTasks, UploadFile, File
+    APIRouter, Depends, HTTPException, Request, 
+    Query, UploadFile, File
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func, and_, or_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
@@ -19,7 +19,7 @@ from liderix_api.db import get_async_session
 from liderix_api.models.users import User
 from liderix_api.models.memberships import Membership, MembershipStatus
 from liderix_api.schemas.user import (
-    UserRead, UserCreate, UserUpdate, UserListResponse,
+    UserRead, UserUpdate, UserListResponse,
     UserProfileUpdate, UserPasswordChange, UserStatsResponse,
     UserSearchResponse, UserPreferencesUpdate
 )
@@ -254,7 +254,8 @@ async def change_user_password(
     
     # Revoke all refresh tokens for security
     from liderix_api.routes.auth.utils import TokenWhitelist
-    token_whitelist = TokenWhitelist(redis)
+    from liderix_api.services.redis_client import get_redis_client
+    token_whitelist = TokenWhitelist(get_redis_client())
     await token_whitelist.remove_all_user_tokens(str(current_user.id))
     
     await AuditLogger.log_event(
@@ -386,13 +387,13 @@ async def list_users(
     # Apply status filter
     if status_filter:
         if status_filter == "active":
-            query = query.where(User.is_active == True)
+            query = query.where(User.is_active.is_(True))
         elif status_filter == "inactive":
-            query = query.where(User.is_active == False)
+            query = query.where(User.is_active.is_(False))
         elif status_filter == "verified":
-            query = query.where(User.is_verified == True)
+            query = query.where(User.is_verified.is_(True))
         elif status_filter == "unverified":
-            query = query.where(User.is_verified == False)
+            query = query.where(User.is_verified.is_(False))
     
     # Get total count
     total = await session.scalar(
@@ -451,7 +452,7 @@ async def search_users(
         .where(
             and_(
                 User.deleted_at.is_(None),
-                User.is_active == True,
+                User.is_active.is_(True),
                 or_(
                     User.username.ilike(search_term),
                     User.email.ilike(search_term),

@@ -4,28 +4,13 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BarChart3, Menu, Calendar, MessageSquare, Sparkles, User, LogOut, Settings as SettingsIcon } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuItem,
-  DropdownMenuGroup,
-  DropdownMenuShortcut,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem, DropdownMenuGroup, DropdownMenuShortcut } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ChevronsUpDown } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context';
 import { CompanyAPI } from '@/lib/api/company';
 import { NotificationBell } from '@/components/ui/notification-bell';
-import {
-  getNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
-  NotificationItem,
-  NotificationType,
-} from '@/lib/api/notifications';
+import { getNotifications, markAllNotificationsRead, markNotificationRead, NotificationItem, NotificationType } from '@/lib/api/notifications';
 
 type HeaderProps = {
   /** Опционально: хендлер для открытия мобильного сайдбара */

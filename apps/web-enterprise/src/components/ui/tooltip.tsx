@@ -79,17 +79,20 @@ const Tooltip: React.FC<TooltipProps> = ({ children, className }) => {
 
 const TooltipTrigger = React.forwardRef<HTMLDivElement, TooltipTriggerProps>(
   ({ asChild, children, className }, ref) => {
-  const Component = asChild ? "div" : "button"
-  return (
-    <Component
-      className={cn("inline-flex items-center", className)}
-      tabIndex={0}
-      ref={ref}
-    >
-      {children}
-    </Component>
-  )
-})
+    // We keep a stable ref element type to avoid HTMLButtonElement/HTMLDivElement mismatch in TS.
+    // If callers need actual <button>, they should pass one as children via `asChild`.
+    return (
+      <div
+        className={cn("inline-flex items-center", className)}
+        tabIndex={0}
+        role={asChild ? undefined : "button"}
+        ref={ref}
+      >
+        {children}
+      </div>
+    )
+  }
+)
 TooltipTrigger.displayName = "TooltipTrigger"
 
 const TooltipContent = React.forwardRef<HTMLDivElement, TooltipContentProps>(

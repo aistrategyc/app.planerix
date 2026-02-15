@@ -51,8 +51,14 @@ export function EditOrganizationDialog({
         description: organization.description || "",
         industry: organization.industry || "",
         size: organization.size || "",
-        website: organization.custom_fields?.website || "",
-        phone: organization.custom_fields?.phone || ""
+        website:
+          typeof organization.custom_fields?.website === "string"
+            ? organization.custom_fields.website
+            : "",
+        phone:
+          typeof organization.custom_fields?.phone === "string"
+            ? organization.custom_fields.phone
+            : "",
       });
       setValidationErrors({});
     }

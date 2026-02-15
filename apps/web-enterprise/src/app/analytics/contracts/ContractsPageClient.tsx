@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,12 +14,14 @@ import { WidgetStatus } from "@/app/analytics/components/WidgetStatus"
 import { InsightsPanel } from "@/app/analytics/components/InsightsPanel"
 import { buildLastWeekRange } from "@/app/analytics/utils/defaults"
 import { formatCurrency, formatNumber, formatPercent } from "@/app/analytics/utils/formatters"
-import { fetchWidget, fetchWidgetsBatch, fetchWidgetRange } from "@/lib/api/analytics-widgets"
+import { fetchWidget, fetchWidgetsBatch, fetchWidgetRange, WidgetRangeResponse } from "@/lib/api/analytics-widgets"
 import { useCities } from "@/app/analytics/hooks/use_cities"
-import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, CartesianGrid, ComposedChart, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAuth } from "@/contexts/auth-context"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipItemStyle, chartTooltipStyle } from "@/components/analytics/chart-theme"
 import { PageHeader } from "@/components/layout/PageHeader"
+import { WidgetTable } from "@/components/analytics/WidgetTable"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 interface ContractsDailyRow {
   date_key: string
@@ -45,10 +47,23 @@ interface ContractsAttributedRow {
   id_city?: number | null
   city_name?: string | null
   attributed_platform?: string | null
+  campaign_name?: string | null
+  ad_name?: string | null
   product?: string | null
+  product_name?: string | null
+  course_name?: string | null
+  form_name?: string | null
   meta_campaign_name?: string | null
+  meta_adset_name?: string | null
   meta_ad_name?: string | null
+  meta_ad_id?: string | number | null
   gads_campaign_name?: string | null
+  gads_ad_group_name?: string | null
+  gads_campaign_label_hint?: string | null
+  creative_id?: string | number | null
+  creative_title?: string | null
+  preview_image_url?: string | null
+  permalink_url?: string | null
   display_title?: string | null
   display_channel?: string | null
   offline_source_type_label?: string | null
@@ -66,14 +81,35 @@ interface TopCampaignRow {
   payments_sum?: number | null
 }
 
+interface PaidCreativeContractRow {
+  contract_date_key?: string | null
+  contract_id?: string | number | null
+  id_city?: number | null
+  city_name?: string | null
+  channel?: string | null
+  platform?: string | null
+  campaign_name?: string | null
+  ad_name?: string | null
+  creative_id?: string | number | null
+  creative_title?: string | null
+  preview_image_url?: string | null
+  permalink_url?: string | null
+  total_cost?: number | null
+  paid_sum?: number | null
+  payments_sum?: number | null
+}
+
 interface FormUnitEconomicsRow {
   date_key?: string | null
   form_id?: string | number | null
   form_name?: string | null
+  product_name?: string | null
   leads_cnt?: number | null
   contracts_cnt?: number | null
   contracts_sum?: number | null
+  revenue_sum?: number | null
   planned_first_pay?: number | null
+  payments_sum?: number | null
   currency_code?: string | null
 }
 
@@ -109,6 +145,19 @@ interface ProductAttributionRow {
   revenue_sum?: number | null
   payments_sum?: number | null
   avg_check?: number | null
+}
+
+interface ProductAttributedDetailRow {
+  [k: string]: unknown
+  contract_date_key?: string | null
+  id_city?: number | null
+  creative_id?: string | number | null
+  creative_title?: string | null
+  preview_image_url?: string | null
+  product_id?: number | null
+  product_name?: string | null
+  paid_sum?: number | null
+  contract_id?: string | number | null
 }
 
 interface LeadsCohortRow {
@@ -192,14 +241,6 @@ const getPlatformMeta = (value?: string | null) => {
   return { label: value, dotClass: "bg-slate-400", hint: value, short: value.slice(0, 1).toUpperCase() }
 }
 
-const mapPlatformToChannel = (value?: string) => {
-  if (!value) return value
-  const key = normalizeKey(value)
-  if (key === "meta") return "paid_meta"
-  if (key === "gads") return "paid_gads"
-  return value
-}
-
 const renderPlatformBadge = (value?: string | null) => {
   const meta = getPlatformMeta(value)
   return (
@@ -240,6 +281,20 @@ const parseDateParam = (value: string | null) => {
   return parsed
 }
 
+const parseDateValue = (value?: string | null) => {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.getTime()
+}
+
+const formatContractDate = (value?: string | null) => {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleDateString("uk-UA")
+}
+
 export default function ContractsPageClient() {
   const router = useRouter()
   const pathname = usePathname()
@@ -251,44 +306,49 @@ export default function ContractsPageClient() {
   const [draftFilters, setDraftFilters] = useState<AnalyticsFiltersValue>({
     dateRange: {},
     cityId: "all",
-    platform: "all",
   })
   const [appliedFilters, setAppliedFilters] = useState<AnalyticsFiltersValue>({
     dateRange: {},
     cityId: "all",
-    platform: "all",
   })
   const [contractsDaily, setContractsDaily] = useState<ContractsDailyRow[]>([])
   const [attributionDaily, setAttributionDaily] = useState<AttributionDailyRow[]>([])
   const [attributedContracts, setAttributedContracts] = useState<ContractsAttributedRow[]>([])
   const [topCampaigns, setTopCampaigns] = useState<TopCampaignRow[]>([])
+  const [paidCreativesContracts, setPaidCreativesContracts] = useState<PaidCreativeContractRow[]>([])
   const [metaContracts, setMetaContracts] = useState<MetaContractsRow[]>([])
   const [gadsContracts, setGadsContracts] = useState<GadsContractsRow[]>([])
   const [productAttribution, setProductAttribution] = useState<ProductAttributionRow[]>([])
+  const [productAttributedDetail, setProductAttributedDetail] = useState<ProductAttributedDetailRow[]>([])
   const [leadsCohort, setLeadsCohort] = useState<LeadsCohortRow[]>([])
   const [kpiDecompositionRows, setKpiDecompositionRows] = useState<KpiDecompositionRow[]>([])
   const [leadJourneyRows, setLeadJourneyRows] = useState<LeadJourneyRow[]>([])
   const [leadCreativeRows, setLeadCreativeRows] = useState<LeadCreativeInteractionRow[]>([])
   const [productAttributionMissing, setProductAttributionMissing] = useState(false)
+  const [productAttributedDetailMissing, setProductAttributedDetailMissing] = useState(false)
   const [leadsCohortMissing, setLeadsCohortMissing] = useState(false)
   const [kpiDecompositionMissing, setKpiDecompositionMissing] = useState(false)
   const [leadJourneyMissing, setLeadJourneyMissing] = useState(false)
   const [leadCreativeMissing, setLeadCreativeMissing] = useState(false)
   const [metaByAdMissing, setMetaByAdMissing] = useState(false)
   const [gadsByCampaignMissing, setGadsByCampaignMissing] = useState(false)
-  const [gadsRange, setGadsRange] = useState<{ min_date?: string; max_date?: string } | null>(null)
+  const [paidCreativesMissing, setPaidCreativesMissing] = useState(false)
+  const [gadsRange, setGadsRange] = useState<WidgetRangeResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [formUnitRows, setFormUnitRows] = useState<FormUnitEconomicsRow[]>([])
   const [formUnitMissing, setFormUnitMissing] = useState(false)
   const [isLoadingFormUnit, setIsLoadingFormUnit] = useState(false)
   const [showAllTopCampaigns, setShowAllTopCampaigns] = useState(false)
   const [showAllAttributed, setShowAllAttributed] = useState(false)
+  const [attributedMode, setAttributedMode] = useState<"paid" | "creative" | "all">("paid")
+  const [showAllPaidCreatives, setShowAllPaidCreatives] = useState(false)
   const [showAllMetaContracts, setShowAllMetaContracts] = useState(false)
   const [showAllGadsContracts, setShowAllGadsContracts] = useState(false)
   const [showAllKpiDecomposition, setShowAllKpiDecomposition] = useState(false)
   const [showAllLeadJourney, setShowAllLeadJourney] = useState(false)
   const [showAllLeadCreatives, setShowAllLeadCreatives] = useState(false)
   const [defaultsApplied, setDefaultsApplied] = useState(false)
+  const [defaultRange, setDefaultRange] = useState<{ from: Date; to: Date } | null>(null)
   const insightsDateFrom = appliedFilters.dateRange.from ? buildDateKey(appliedFilters.dateRange.from) : undefined
   const insightsDateTo = appliedFilters.dateRange.to ? buildDateKey(appliedFilters.dateRange.to) : undefined
 
@@ -299,7 +359,6 @@ export default function ContractsPageClient() {
         to: parseDateParam(searchParams.get("date_to")),
       },
       cityId: searchParams.get("id_city") ?? "all",
-      platform: searchParams.get("platform") ?? "all",
     }
     setDraftFilters(nextFilters)
     setAppliedFilters(nextFilters)
@@ -325,8 +384,8 @@ export default function ContractsPageClient() {
         const nextFilters: AnalyticsFiltersValue = {
           dateRange,
           cityId: draftFilters.cityId,
-          platform: draftFilters.platform,
         }
+        setDefaultRange(dateRange)
         setDraftFilters(nextFilters)
         setAppliedFilters(nextFilters)
       } finally {
@@ -337,7 +396,7 @@ export default function ContractsPageClient() {
     return () => {
       active = false
     }
-  }, [defaultsApplied, draftFilters.cityId, draftFilters.platform, searchParams, canFetch])
+  }, [defaultsApplied, draftFilters.cityId, searchParams, canFetch])
 
   useEffect(() => {
     if (!canFetch) return
@@ -375,19 +434,20 @@ export default function ContractsPageClient() {
       date_from: draftFilters.dateRange.from ? buildDateKey(draftFilters.dateRange.from) : null,
       date_to: draftFilters.dateRange.to ? buildDateKey(draftFilters.dateRange.to) : null,
       id_city: draftFilters.cityId === "all" ? null : draftFilters.cityId,
-      platform: draftFilters.platform === "all" ? null : draftFilters.platform,
     })
   }
 
   const resetFilters = () => {
-    const resetValue: AnalyticsFiltersValue = { dateRange: {}, cityId: "all", platform: "all" }
+    const resetValue: AnalyticsFiltersValue = {
+      dateRange: defaultRange ?? {},
+      cityId: "all",
+    }
     setDraftFilters(resetValue)
     setAppliedFilters(resetValue)
     updateQuery({
-      date_from: null,
-      date_to: null,
+      date_from: resetValue.dateRange.from ? buildDateKey(resetValue.dateRange.from) : null,
+      date_to: resetValue.dateRange.to ? buildDateKey(resetValue.dateRange.to) : null,
       id_city: null,
-      platform: null,
     })
   }
 
@@ -398,7 +458,6 @@ export default function ContractsPageClient() {
     const nextFilters: AnalyticsFiltersValue = {
       dateRange: nextRange,
       cityId: draftFilters.cityId,
-      platform: draftFilters.platform,
     }
     setDraftFilters(nextFilters)
     setAppliedFilters(nextFilters)
@@ -406,51 +465,72 @@ export default function ContractsPageClient() {
       date_from: nextFilters.dateRange.from ? buildDateKey(nextFilters.dateRange.from) : null,
       date_to: nextFilters.dateRange.to ? buildDateKey(nextFilters.dateRange.to) : null,
       id_city: nextFilters.cityId === "all" ? null : nextFilters.cityId,
-      platform: nextFilters.platform === "all" ? null : nextFilters.platform,
     })
   }
 
+  const clearData = useCallback(() => {
+    setContractsDaily([])
+    setAttributionDaily([])
+    setAttributedContracts([])
+    setTopCampaigns([])
+    setPaidCreativesContracts([])
+    setMetaContracts([])
+    setGadsContracts([])
+    setProductAttribution([])
+    setProductAttributedDetail([])
+    setLeadsCohort([])
+    setKpiDecompositionRows([])
+    setLeadJourneyRows([])
+    setLeadCreativeRows([])
+    setProductAttributionMissing(false)
+    setProductAttributedDetailMissing(false)
+    setLeadsCohortMissing(false)
+    setKpiDecompositionMissing(false)
+    setLeadJourneyMissing(false)
+    setLeadCreativeMissing(false)
+    setMetaByAdMissing(false)
+    setGadsByCampaignMissing(false)
+    setPaidCreativesMissing(false)
+  }, [])
+
   useEffect(() => {
+    if (!canFetch) return
+    if (!appliedFilters.dateRange.from || !appliedFilters.dateRange.to) {
+      if (!defaultsApplied) return
+      setIsLoading(false)
+      clearData()
+      return
+    }
     let active = true
     const load = async () => {
-      if (!canFetch) return
       setIsLoading(true)
       try {
-        const platformFilter = appliedFilters.platform === "all" ? undefined : appliedFilters.platform
-        const channelFilter = platformFilter ? mapPlatformToChannel(platformFilter) : undefined
-        const skipPaid = platformFilter === "offline"
-
         const globalFilters: Record<string, string | number | undefined> = {
           date_from: appliedFilters.dateRange.from ? buildDateKey(appliedFilters.dateRange.from) : undefined,
           date_to: appliedFilters.dateRange.to ? buildDateKey(appliedFilters.dateRange.to) : undefined,
           id_city: appliedFilters.cityId === "all" ? undefined : Number(appliedFilters.cityId),
         }
-
-        const channelFilters = {
-          platform: channelFilter,
-        }
-        const paidFilters = {
-          platform: platformFilter && platformFilter !== "offline" ? platformFilter : undefined,
-        }
+        const channelFilters = {}
+        const paidFilters = {}
 
         const widgets = [
           { widget_key: "contracts.daily_city", filters: channelFilters, limit: 200 },
           { widget_key: "contracts.attribution_daily_city", filters: channelFilters, limit: 200 },
           { widget_key: "contracts.attributed", order_by: "-contract_date_key", limit: 200 },
           { widget_key: "contracts.product_attribution_daily_city", filters: paidFilters, order_by: "-revenue_sum", limit: 200 },
+          { widget_key: "contracts.product_attributed_detail", filters: paidFilters, order_by: "-paid_sum", limit: 200 },
           { widget_key: "contracts.leads_cohort", filters: channelFilters, order_by: "-date_key", limit: 200 },
           { widget_key: "contracts.kpi_decomposition", filters: channelFilters, order_by: "-revenue_sum", limit: 200 },
           { widget_key: "contracts.leads_journey", filters: channelFilters, order_by: "-payments_sum", limit: 200 },
           { widget_key: "contracts.lead_creative_interactions", filters: channelFilters, order_by: "-touch_count", limit: 200 },
         ]
 
-        if (!skipPaid) {
-          widgets.push(
-            { widget_key: "contracts.top_campaigns", filters: paidFilters, order_by: "-contracts_cnt", limit: 200 },
-            { widget_key: "contracts.meta_by_ad_daily", filters: paidFilters, order_by: "-contracts_cnt", limit: 200 },
-            { widget_key: "contracts.gads_by_campaign_daily", filters: paidFilters, order_by: "-contracts_cnt", limit: 200 }
-          )
-        }
+        widgets.push(
+          { widget_key: "contracts.top_campaigns", filters: paidFilters, order_by: "-contracts_cnt", limit: 200 },
+          { widget_key: "contracts.paid_creatives_top", filters: paidFilters, order_by: "-paid_sum", limit: 1000 },
+          { widget_key: "contracts.meta_by_ad_daily", filters: paidFilters, order_by: "-contracts_cnt", limit: 200 },
+          { widget_key: "contracts.gads_by_campaign_daily", filters: paidFilters, order_by: "-contracts_cnt", limit: 200 }
+        )
 
         const batch = await fetchWidgetsBatch({
           global_filters: globalFilters,
@@ -461,38 +541,33 @@ export default function ContractsPageClient() {
         const attributionDailyRes = batch.items["contracts.attribution_daily_city"]
         const attributedRes = batch.items["contracts.attributed"]
         const productAttributionRes = batch.items["contracts.product_attribution_daily_city"]
+        const productAttributedDetailRes = batch.items["contracts.product_attributed_detail"]
         const leadsCohortRes = batch.items["contracts.leads_cohort"]
         const kpiDecompositionRes = batch.items["contracts.kpi_decomposition"]
         const leadJourneyRes = batch.items["contracts.leads_journey"]
         const leadCreativeRes = batch.items["contracts.lead_creative_interactions"]
-        const topCampaignsRes = skipPaid ? undefined : batch.items["contracts.top_campaigns"]
-        const metaByAdRes = skipPaid ? undefined : batch.items["contracts.meta_by_ad_daily"]
-        const gadsByCampaignRes = skipPaid ? undefined : batch.items["contracts.gads_by_campaign_daily"]
+        const topCampaignsRes = batch.items["contracts.top_campaigns"]
+        const paidCreativesRes = batch.items["contracts.paid_creatives_top"]
+        const metaByAdRes = batch.items["contracts.meta_by_ad_daily"]
+        const gadsByCampaignRes = batch.items["contracts.gads_by_campaign_daily"]
 
         if (!active) return
         const rawAttributed = (attributedRes?.items ?? []) as ContractsAttributedRow[]
-        const normalizedPlatform = normalizeKey(platformFilter ?? "")
-        const filteredAttributed =
-          platformFilter == null
-            ? rawAttributed
-            : rawAttributed.filter((row) => {
-                const rowPlatform = normalizeKey(row.attributed_platform ?? "")
-                if (normalizedPlatform === "offline") return rowPlatform === "offline"
-                if (normalizedPlatform === "meta") return ["meta", "paidmeta", "paid_meta"].includes(rowPlatform)
-                if (normalizedPlatform === "gads") return ["gads", "paidgads", "paid_gads"].includes(rowPlatform)
-                return true
-              })
 
-        setContractsDaily((contractsDailyRes?.items ?? []) as ContractsDailyRow[])
-        setAttributionDaily((attributionDailyRes?.items ?? []) as AttributionDailyRow[])
-        setAttributedContracts(filteredAttributed)
+        setContractsDaily((contractsDailyRes?.items ?? []) as unknown as ContractsDailyRow[])
+        setAttributionDaily((attributionDailyRes?.items ?? []) as unknown as AttributionDailyRow[])
+        setAttributedContracts(rawAttributed)
         setTopCampaigns((topCampaignsRes?.items ?? []) as TopCampaignRow[])
+        setPaidCreativesContracts((paidCreativesRes?.items ?? []) as PaidCreativeContractRow[])
+        setPaidCreativesMissing(Boolean(paidCreativesRes?.missing_view || paidCreativesRes?.missing_columns))
         setMetaContracts((metaByAdRes?.items ?? []) as MetaContractsRow[])
         setMetaByAdMissing(Boolean(metaByAdRes?.missing_view))
         setGadsContracts((gadsByCampaignRes?.items ?? []) as GadsContractsRow[])
         setGadsByCampaignMissing(Boolean(gadsByCampaignRes?.missing_view))
         setProductAttribution((productAttributionRes?.items ?? []) as ProductAttributionRow[])
         setProductAttributionMissing(Boolean(productAttributionRes?.missing_view))
+        setProductAttributedDetail((productAttributedDetailRes?.items ?? []) as ProductAttributedDetailRow[])
+        setProductAttributedDetailMissing(Boolean(productAttributedDetailRes?.missing_view))
         setLeadsCohort((leadsCohortRes?.items ?? []) as LeadsCohortRow[])
         setLeadsCohortMissing(Boolean(leadsCohortRes?.missing_view))
         setKpiDecompositionRows((kpiDecompositionRes?.items ?? []) as KpiDecompositionRow[])
@@ -504,24 +579,7 @@ export default function ContractsPageClient() {
       } catch (error) {
         if (!active) return
         console.error("Failed to load contracts data:", error)
-        setContractsDaily([])
-        setAttributionDaily([])
-        setAttributedContracts([])
-        setTopCampaigns([])
-        setMetaContracts([])
-        setGadsContracts([])
-        setProductAttribution([])
-        setLeadsCohort([])
-        setKpiDecompositionRows([])
-        setLeadJourneyRows([])
-        setLeadCreativeRows([])
-        setProductAttributionMissing(false)
-        setLeadsCohortMissing(false)
-        setKpiDecompositionMissing(false)
-        setLeadJourneyMissing(false)
-        setLeadCreativeMissing(false)
-        setMetaByAdMissing(false)
-        setGadsByCampaignMissing(false)
+        clearData()
       } finally {
         if (active) setIsLoading(false)
       }
@@ -530,7 +588,7 @@ export default function ContractsPageClient() {
     return () => {
       active = false
     }
-  }, [appliedFilters, canFetch])
+  }, [appliedFilters, canFetch, defaultsApplied, clearData])
 
   const data = useMemo(
     () => ({
@@ -538,11 +596,81 @@ export default function ContractsPageClient() {
       attribution_daily: attributionDaily,
       contracts_attributed: attributedContracts,
       top_campaigns: topCampaigns,
+      paid_creatives_contracts: paidCreativesContracts,
       meta_contracts_by_ad: metaContracts,
       gads_contracts_by_campaign: gadsContracts,
     }),
-    [attributionDaily, attributedContracts, contractsDaily, gadsContracts, metaContracts, topCampaigns]
+    [attributionDaily, attributedContracts, contractsDaily, gadsContracts, metaContracts, topCampaigns, paidCreativesContracts]
   )
+
+  const paidCreativesTop = useMemo(() => {
+    const bucket = new Map<
+      string,
+      {
+        key: string
+        platform: string
+        channel?: string | null
+        campaignLabel: string
+        adLabel?: string | null
+        creativeId?: string | number | null
+        creativeTitle?: string | null
+        previewImageUrl?: string | null
+        permalinkUrl?: string | null
+        contractsCnt: number
+        paidSum: number
+        paymentsSum: number
+        lastContractDateKey?: string | null
+      }
+    >()
+
+    data.paid_creatives_contracts.forEach((row) => {
+      const platform = (row.platform ?? row.channel ?? "unknown") as string
+      const campaign = row.campaign_name ?? "Campaign"
+      const ad = row.ad_name ?? null
+      const creativeId = row.creative_id ?? null
+      const key = `${platform}::${campaign}::${ad ?? ""}::${creativeId ?? ""}`
+
+      const existing = bucket.get(key)
+      const entry = existing ?? {
+        key,
+        platform,
+        channel: row.channel,
+        campaignLabel: campaign,
+        adLabel: ad,
+        creativeId,
+        creativeTitle: row.creative_title ?? null,
+        previewImageUrl: row.preview_image_url ?? null,
+        permalinkUrl: row.permalink_url ?? null,
+        contractsCnt: 0,
+        paidSum: 0,
+        paymentsSum: 0,
+        lastContractDateKey: row.contract_date_key ?? null,
+      }
+
+      entry.contractsCnt += 1
+      entry.paidSum += toNumber(row.paid_sum) ?? 0
+      entry.paymentsSum += toNumber(row.payments_sum) ?? 0
+
+      if (!entry.previewImageUrl && row.preview_image_url) entry.previewImageUrl = row.preview_image_url
+      if (!entry.permalinkUrl && row.permalink_url) entry.permalinkUrl = row.permalink_url
+      if (!entry.creativeTitle && row.creative_title) entry.creativeTitle = row.creative_title
+
+      const nextDate = row.contract_date_key ?? null
+      if (nextDate && (!entry.lastContractDateKey || nextDate > entry.lastContractDateKey)) {
+        entry.lastContractDateKey = nextDate
+      }
+
+      bucket.set(key, entry)
+    })
+
+    return Array.from(bucket.values()).sort((a, b) => b.paidSum - a.paidSum)
+  }, [data.paid_creatives_contracts])
+
+  const paidCreativesCoverage = useMemo(() => {
+    const total = data.paid_creatives_contracts.length
+    const withPreview = data.paid_creatives_contracts.filter((r) => Boolean(r.preview_image_url)).length
+    return { total, withPreview }
+  }, [data.paid_creatives_contracts])
 
   const productSummary = useMemo(() => {
     const bucket = new Map<
@@ -570,6 +698,59 @@ export default function ContractsPageClient() {
     })
     return Array.from(bucket.values()).sort((a, b) => b.revenue - a.revenue)
   }, [productAttribution])
+
+  const productDetailColumns = useMemo(
+    () => [
+      "contract_date_key",
+      "city_name",
+      "id_city",
+      "product_name",
+      "paid_sum",
+      "contract_id",
+      "creative_title",
+      "preview_image_url",
+      "creative_id",
+    ],
+    []
+  )
+
+  const productDetailLabels = useMemo(
+    () => ({
+      contract_date_key: "Date",
+      city_name: "City",
+      id_city: "City ID",
+      product_name: "Product",
+      paid_sum: "Paid sum",
+      contract_id: "Contract ID",
+      creative_title: "Creative",
+      preview_image_url: "Preview",
+      creative_id: "Creative ID",
+    }),
+    []
+  )
+
+	  const productDetailRenderers = useMemo(
+	    () => ({
+	      paid_sum: (value: unknown) => (typeof value === "number" ? formatCurrency(value) : formatCurrency(toNumber(value) ?? 0)),
+	      preview_image_url: (value: unknown, row: Record<string, unknown>) => {
+	        if (!value || typeof value !== "string") {
+	          const platform =
+	            typeof row?.attributed_platform === "string" ? row.attributed_platform.toLowerCase() : "unknown"
+	          const label = ["offline", "other", "unknown", "organic", ""].includes(platform)
+            ? "No creative available"
+            : "Preview unavailable"
+          return <span className="text-xs text-muted-foreground">{label}</span>
+        }
+        return (
+          <div className="h-10 w-16 overflow-hidden rounded-md bg-muted/60">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={value} alt="Preview" className="h-full w-full object-cover" loading="lazy" />
+          </div>
+        )
+      },
+    }),
+    []
+  )
 
   const cohortSummary = useMemo(() => {
     return [...leadsCohort]
@@ -604,10 +785,10 @@ export default function ContractsPageClient() {
         if (appliedFilters.cityId !== "all") {
           params.id_city = Number(appliedFilters.cityId)
         }
-        if (appliedFilters.platform !== "all") {
-          params.platform = appliedFilters.platform
-        }
-        const response = await fetchWidget("crm.form_unit_economics_daily", params)
+        const response = await fetchWidget("crm.form_unit_economics_daily", {
+          ...params,
+          order_by: "-revenue_sum",
+        })
         if (!active) return
         setFormUnitMissing(false)
         setFormUnitRows((response.items ?? []) as FormUnitEconomicsRow[])
@@ -715,6 +896,115 @@ export default function ContractsPageClient() {
     return id != null ? `City ${id}` : null
   }
 
+  const productDetailByContract = useMemo(() => {
+    const map = new Map<string, ProductAttributedDetailRow>()
+    productAttributedDetail.forEach((row) => {
+      if (row.contract_id == null) return
+      const key = String(row.contract_id)
+      const existing = map.get(key)
+      if (!existing) {
+        map.set(key, row)
+        return
+      }
+      const existingPaid = toNumber(existing.paid_sum) ?? 0
+      const nextPaid = toNumber(row.paid_sum) ?? 0
+      const existingPreview = Boolean(existing.preview_image_url)
+      const nextPreview = Boolean(row.preview_image_url)
+      if ((!existingPreview && nextPreview) || nextPaid > existingPaid) {
+        map.set(key, row)
+      }
+    })
+    return map
+  }, [productAttributedDetail])
+
+  const attributedContractsDisplay = useMemo(() => {
+    return data.contracts_attributed
+      .map((row) => {
+        const contractKey = row.contract_id != null ? String(row.contract_id) : null
+        const productDetail = contractKey ? productDetailByContract.get(contractKey) : undefined
+        const contractDateRaw = row.contract_date_key ?? row.contract_date ?? productDetail?.contract_date_key ?? null
+        const contractDateTs = parseDateValue(contractDateRaw)
+        const cityLabel =
+          row.city_name ??
+          (row.id_city != null ? (cityLookup.get(row.id_city) ?? `City ${row.id_city}`) : null)
+        const creativeTitle =
+          row.creative_title ??
+          productDetail?.creative_title ??
+          row.display_title ??
+          row.meta_ad_name ??
+          row.gads_ad_group_name ??
+          null
+        const creativeId = row.creative_id ?? productDetail?.creative_id ?? null
+        const previewImageUrl = row.preview_image_url ?? productDetail?.preview_image_url ?? null
+        const campaignLabel =
+          row.campaign_name ??
+          row.meta_campaign_name ??
+          row.gads_campaign_name ??
+          row.display_title ??
+          "Campaign"
+        const adLabel =
+          row.ad_name ??
+          row.meta_ad_name ??
+          row.gads_ad_group_name ??
+          null
+        const productLabel = row.product_name ?? productDetail?.product_name ?? row.course_name ?? row.product ?? null
+        return {
+          key: `${row.contract_id ?? "contract"}-${contractDateRaw ?? "date"}`,
+          contractId: row.contract_id,
+          contractDateRaw,
+          contractDateLabel: formatContractDate(contractDateRaw),
+          contractDateTs,
+          cityLabel,
+          attributedPlatform: row.attributed_platform ?? null,
+          campaignLabel,
+          adLabel,
+          creativeTitle,
+          creativeId,
+          previewImageUrl,
+          permalinkUrl: row.permalink_url ?? null,
+          productLabel,
+          totalCost: toNumber(row.total_cost) ?? 0,
+          paymentsSum: toNumber(row.payments_sum) ?? 0,
+          offlineSourceTypeLabel: row.offline_source_type_label ?? null,
+          offlineOwnerName: row.offline_owner_name ?? null,
+          gadsCampaignHint: row.gads_campaign_label_hint ?? null,
+        }
+      })
+      .sort((a, b) => {
+        if ((b.contractDateTs ?? 0) !== (a.contractDateTs ?? 0)) {
+          return (b.contractDateTs ?? 0) - (a.contractDateTs ?? 0)
+        }
+        return b.totalCost - a.totalCost
+      })
+  }, [cityLookup, data.contracts_attributed, productDetailByContract])
+
+  const attributedCreativeCoverage = useMemo(() => {
+    const total = attributedContractsDisplay.length
+    const withCreative = attributedContractsDisplay.filter((row) => row.creativeId != null || Boolean(row.creativeTitle)).length
+    const withPreview = attributedContractsDisplay.filter((row) => Boolean(row.previewImageUrl)).length
+    return { total, withCreative, withPreview }
+  }, [attributedContractsDisplay])
+
+  const attributedPaidCoverage = useMemo(() => {
+    const paid = attributedContractsDisplay.filter((row) => {
+      const key = normalizeKey(row.attributedPlatform ?? "")
+      return key === "meta" || key === "paidmeta" || key === "gads" || key === "paidgads" || key === "pmax" || key === "paidpmax"
+    }).length
+    return { paid }
+  }, [attributedContractsDisplay])
+
+  const attributedContractsFiltered = useMemo(() => {
+    if (attributedMode === "all") return attributedContractsDisplay
+    if (attributedMode === "creative") {
+      return attributedContractsDisplay.filter((row) => row.creativeId != null || Boolean(row.previewImageUrl))
+    }
+    // paid
+    return attributedContractsDisplay.filter((row) => {
+      const key = normalizeKey(row.attributedPlatform ?? "")
+      return key === "meta" || key === "paidmeta" || key === "gads" || key === "paidgads" || key === "pmax" || key === "paidpmax"
+    })
+  }, [attributedContractsDisplay, attributedMode])
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -726,7 +1016,6 @@ export default function ContractsPageClient() {
         value={draftFilters}
         onDateChange={(value) => setDraftFilters((prev) => ({ ...prev, dateRange: value }))}
         onCityChange={(value) => setDraftFilters((prev) => ({ ...prev, cityId: value }))}
-        onPlatformChange={(value) => setDraftFilters((prev) => ({ ...prev, platform: value }))}
         onApply={applyFilters}
         onReset={resetFilters}
         isLoading={isLoading}
@@ -815,7 +1104,7 @@ export default function ContractsPageClient() {
             </CardHeader>
             <CardContent>
               <div className="h-[260px]">
-                <ResponsiveContainer>
+                <SafeResponsiveContainer>
                   <ComposedChart data={trendData} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
                     <defs>
                       <linearGradient id="contractsFill" x1="0" y1="0" x2="0" y2="1">
@@ -826,10 +1115,18 @@ export default function ContractsPageClient() {
                     <CartesianGrid {...chartGridProps} vertical={false} />
                     <XAxis dataKey="date" {...chartAxisProps} />
                     <YAxis {...chartAxisProps} />
-                    <Tooltip formatter={(value: number) => [formatNumber(value), "Contracts"]} contentStyle={chartTooltipStyle} itemStyle={chartTooltipItemStyle} />
+                    <Tooltip
+                      formatter={(value) => {
+                        if (value === null || value === undefined) return ["—", "Contracts"]
+                        const numeric = typeof value === "number" ? value : Number(value)
+                        return [formatNumber(numeric), "Contracts"]
+                      }}
+                      contentStyle={chartTooltipStyle}
+                      itemStyle={chartTooltipItemStyle}
+                    />
                     <Area type="monotone" dataKey="contracts" stroke={CHART_COLORS.primary} fill="url(#contractsFill)" strokeWidth={2} dot={false} />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </SafeResponsiveContainer>
               </div>
             </CardContent>
           </Card>
@@ -910,66 +1207,222 @@ export default function ContractsPageClient() {
 
             <Card className="bg-card/40 border-border/60 shadow-sm">
               <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between pb-3">
-                <CardTitle>Attributed contracts</CardTitle>
-                {data.contracts_attributed.length > 8 && (
-                  <Button size="sm" variant="outline" onClick={() => setShowAllAttributed((prev) => !prev)}>
-                    {showAllAttributed ? "Collapse" : "Show all"}
+                <CardTitle>Paid creatives (contracts)</CardTitle>
+                {paidCreativesTop.length > 8 && (
+                  <Button size="sm" variant="outline" onClick={() => setShowAllPaidCreatives((prev) => !prev)}>
+                    {showAllPaidCreatives ? "Collapse" : "Show all"}
                   </Button>
                 )}
               </CardHeader>
               <CardContent>
+                {paidCreativesMissing ? (
+                  <WidgetStatus
+                    title="Нет витрины"
+                    description="SEM витрина contracts.paid_creatives_top отсутствует или не обновляется."
+                  />
+                ) : paidCreativesTop.length === 0 ? (
+                  <WidgetStatus
+                    title="Нет paid-креативов"
+                    description="За выбранный период нет paid-контрактов с привязанным креативом/превью."
+                  />
+                ) : (
+                  <>
+                    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline">Paid contracts {formatNumber(paidCreativesCoverage.total)}</Badge>
+                      <Badge variant="outline">With preview {formatNumber(paidCreativesCoverage.withPreview)}</Badge>
+                      <Badge variant="outline">Unique creatives {formatNumber(paidCreativesTop.length)}</Badge>
+                    </div>
+                    <div className="space-y-2">
+                      {(showAllPaidCreatives ? paidCreativesTop : paidCreativesTop.slice(0, 8)).map((row) => {
+                        const creativeLabel =
+                          row.creativeTitle ??
+                          (row.creativeId != null ? `Creative #${row.creativeId}` : "Creative")
+                        const avgPaid = row.contractsCnt > 0 ? row.paidSum / row.contractsCnt : null
+                        return (
+                          <div key={row.key} className="rounded-2xl border border-border/60 bg-card/40 p-4">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="flex min-w-0 flex-1 items-start gap-3">
+                                <div className="h-16 w-24 overflow-hidden rounded-md border border-border/60 bg-muted/40">
+                                  {row.previewImageUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={row.previewImageUrl}
+                                      alt={creativeLabel}
+                                      className="h-full w-full object-cover"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center px-2 text-center text-[11px] text-muted-foreground">
+                                      No preview
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-semibold truncate">{creativeLabel}</span>
+                                    {row.lastContractDateKey && <Badge variant="outline">{row.lastContractDateKey}</Badge>}
+                                    {renderPlatformBadge(row.platform)}
+                                  </div>
+                                  <div className="mt-1 truncate text-sm font-medium">{row.campaignLabel}</div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                    {row.adLabel && <span>Ad: {row.adLabel}</span>}
+                                    {row.creativeId != null && <span>Creative #{row.creativeId}</span>}
+                                  </div>
+                                  {row.permalinkUrl && (
+                                    <div className="mt-2">
+                                      <Button asChild size="sm" variant="outline" className="h-7 px-2 text-[11px]">
+                                        <a href={row.permalinkUrl} target="_blank" rel="noopener noreferrer">
+                                          Open creative
+                                        </a>
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-right text-sm lg:min-w-[240px]">
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Контракти</div>
+                                  <div className="font-semibold">{formatNumber(row.contractsCnt)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Paid sum</div>
+                                  <div className="font-semibold">{formatCurrency(row.paidSum)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Оплати</div>
+                                  <div className="font-semibold">{formatCurrency(row.paymentsSum)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Avg paid</div>
+                                  <div className="font-semibold">{avgPaid ? formatCurrency(avgPaid) : "—"}</div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card/40 border-border/60 shadow-sm">
+              <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between pb-3">
+                <CardTitle>Attributed contracts</CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={attributedMode === "paid" ? "secondary" : "outline"}
+                    onClick={() => setAttributedMode("paid")}
+                  >
+                    Only paid
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={attributedMode === "creative" ? "secondary" : "outline"}
+                    onClick={() => setAttributedMode("creative")}
+                  >
+                    Only with creative
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={attributedMode === "all" ? "secondary" : "outline"}
+                    onClick={() => setAttributedMode("all")}
+                  >
+                    Show all
+                  </Button>
+                  {attributedContractsFiltered.length > 8 && (
+                    <Button size="sm" variant="outline" onClick={() => setShowAllAttributed((prev) => !prev)}>
+                      {showAllAttributed ? "Collapse" : "Expand"}
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {attributedContractsDisplay.length > 0 && (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline">Rows {formatNumber(attributedCreativeCoverage.total)}</Badge>
+                    <Badge variant="outline">Paid {formatNumber(attributedPaidCoverage.paid)}</Badge>
+                    <Badge variant="outline">With creative {formatNumber(attributedCreativeCoverage.withCreative)}</Badge>
+                    <Badge variant="outline">With preview {formatNumber(attributedCreativeCoverage.withPreview)}</Badge>
+                  </div>
+                )}
                 <div className="space-y-2">
-                  {[...(showAllAttributed ? data.contracts_attributed : data.contracts_attributed.slice(0, 8))]
-                    .sort((a, b) => (toNumber(b.total_cost) ?? 0) - (toNumber(a.total_cost) ?? 0))
+                  {(showAllAttributed ? attributedContractsFiltered : attributedContractsFiltered.slice(0, 8))
                     .map((row, index) => {
-                      const normalizedPlatform = normalizeKey(row.attributed_platform ?? "")
+                      const normalizedPlatform = normalizeKey(row.attributedPlatform ?? "")
                       const isOffline =
                         normalizedPlatform === "offline" || normalizedPlatform === "unknown" || normalizedPlatform === "other"
-                      const name =
-                        row.display_title ??
-                        row.meta_ad_name ??
-                        row.meta_campaign_name ??
-                        row.gads_campaign_name ??
-                        row.product ??
-                        (row.contract_id ? `Contract #${row.contract_id}` : "Contract")
-                      const contractDate = row.contract_date_key ?? row.contract_date ?? null
-                      const cityLabel = resolveCityName(row.city_name, row.id_city)
-                      const payments = toNumber(row.payments_sum) ?? 0
-                      const revenue = toNumber(row.total_cost) ?? 0
+                      const contractLabel = row.contractId ? `Contract #${row.contractId}` : "Contract"
                       return (
                         <div
-                          key={`${row.contract_id ?? "contract"}-${index}`}
+                          key={`${row.key}-${index}`}
                           className="rounded-2xl border border-border/60 bg-card/40 p-4"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm font-semibold truncate">{name}</div>
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                {cityLabel && <span>{cityLabel}</span>}
-                                {renderPlatformBadge(row.attributed_platform)}
-                                {isOffline && row.offline_source_type_label && <span>{row.offline_source_type_label}</span>}
-                                {isOffline && row.offline_owner_name && <span>{row.offline_owner_name}</span>}
-                                {contractDate && <span>{contractDate}</span>}
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="flex min-w-0 flex-1 items-start gap-3">
+                              <div className="h-16 w-24 overflow-hidden rounded-md border border-border/60 bg-muted/40">
+                                {row.previewImageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={row.previewImageUrl} alt={row.creativeTitle ?? contractLabel} className="h-full w-full object-cover" loading="lazy" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center px-2 text-center text-[11px] text-muted-foreground">
+                                    No preview
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-semibold">{contractLabel}</span>
+                                  {row.contractDateLabel && <Badge variant="outline">{row.contractDateLabel}</Badge>}
+                                  {renderPlatformBadge(row.attributedPlatform)}
+                                </div>
+                                <div className="mt-1 truncate text-sm font-medium" title={row.gadsCampaignHint ?? undefined}>
+                                  {row.campaignLabel}
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                  {row.adLabel && <span>Ad: {row.adLabel}</span>}
+                                  {row.creativeTitle && <span>Creative: {row.creativeTitle}</span>}
+                                  {row.cityLabel && <span>{row.cityLabel}</span>}
+                                  {row.productLabel && <span>{row.productLabel}</span>}
+                                  {isOffline && row.offlineSourceTypeLabel && <span>{row.offlineSourceTypeLabel}</span>}
+                                  {isOffline && row.offlineOwnerName && <span>{row.offlineOwnerName}</span>}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  {row.creativeId != null && (
+                                    <Badge variant="secondary" className="text-[11px]">
+                                      Creative #{row.creativeId}
+                                    </Badge>
+                                  )}
+                                  {row.permalinkUrl && (
+                                    <Button asChild size="sm" variant="outline" className="h-7 px-2 text-[11px]">
+                                      <a href={row.permalinkUrl} target="_blank" rel="noopener noreferrer">
+                                        Open creative
+                                      </a>
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                            <div className="text-right text-sm">
-                              <div className="text-xs text-muted-foreground">Дохід</div>
-                              <div className="font-semibold">{formatCurrency(revenue)}</div>
-                            </div>
-                            {payments > 0 && (
-                              <div className="text-right text-sm">
+                            <div className="grid grid-cols-2 gap-3 text-right text-sm lg:min-w-[220px]">
+                              <div>
+                                <div className="text-xs text-muted-foreground">Дохід</div>
+                                <div className="font-semibold">{formatCurrency(row.totalCost)}</div>
+                              </div>
+                              <div>
                                 <div className="text-xs text-muted-foreground">Оплати</div>
-                                <div className="font-semibold">{formatCurrency(payments)}</div>
+                                <div className="font-semibold">{formatCurrency(row.paymentsSum)}</div>
                               </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       )
                     })}
-                  {data.contracts_attributed.length === 0 && (
+                  {attributedContractsFiltered.length === 0 && (
                     <WidgetStatus
                       title="Нет атрибуции"
-                      description="За выбранный период атрибутированные контракты не найдены."
+                      description="Для выбранного фильтра нет строк. Попробуйте переключить режим (paid/creative/all) или расширить период."
                     />
                   )}
                 </div>
@@ -1100,6 +1553,28 @@ export default function ContractsPageClient() {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="bg-card/40 border-border/60 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle>Product attribution detail</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {productAttributedDetailMissing ? (
+                <WidgetStatus
+                  title="Нет витрины"
+                  description="SEM витрина contracts.product_attributed_detail отсутствует или не обновляется."
+                />
+              ) : (
+                <WidgetTable
+                  rows={productAttributedDetail}
+                  emptyLabel="Нет детальных строк по продуктам."
+                  columnsOrder={productDetailColumns}
+                  columnLabels={productDetailLabels}
+                  columnRenderers={productDetailRenderers}
+                />
+              )}
+            </CardContent>
+          </Card>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <Card className="bg-card/40 border-border/60 shadow-sm">
@@ -1317,11 +1792,16 @@ export default function ContractsPageClient() {
               <CardContent>
                 <div className="space-y-2">
                   {formUnitRows
-                    .sort((a, b) => (toNumber(b.contracts_sum) ?? 0) - (toNumber(a.contracts_sum) ?? 0))
+                    .sort(
+                      (a, b) =>
+                        (toNumber(b.contracts_sum) ?? toNumber(b.revenue_sum) ?? 0) -
+                        (toNumber(a.contracts_sum) ?? toNumber(a.revenue_sum) ?? 0)
+                    )
                     .slice(0, 12)
                     .map((row, index) => {
                       const formTitle = row.form_name ?? (row.form_id != null ? `Form #${row.form_id}` : "Form")
-                      const plannedPay = toNumber(row.planned_first_pay) ?? 0
+                      const revenueValue = toNumber(row.contracts_sum) ?? toNumber(row.revenue_sum) ?? 0
+                      const plannedPay = toNumber(row.planned_first_pay) ?? toNumber(row.payments_sum) ?? 0
                       return (
                         <div
                           key={`${row.form_id ?? row.form_name}-${index}`}
@@ -1330,6 +1810,9 @@ export default function ContractsPageClient() {
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-semibold">{formTitle}</div>
+                              {row.product_name && (
+                                <div className="mt-1 text-xs text-muted-foreground">{row.product_name}</div>
+                              )}
                               {row.currency_code && (
                                 <div className="mt-1 text-[11px] uppercase text-muted-foreground">
                                   {row.currency_code}
@@ -1346,7 +1829,7 @@ export default function ContractsPageClient() {
                           </div>
                           <div className="text-right text-sm">
                             <div className="text-xs text-muted-foreground">Revenue</div>
-                            <div className="font-semibold">{formatCurrency(toNumber(row.contracts_sum) ?? 0)}</div>
+                            <div className="font-semibold">{formatCurrency(revenueValue)}</div>
                           </div>
                             {plannedPay > 0 && (
                               <div className="text-right text-sm">

@@ -19,13 +19,22 @@ interface SalesByUtmTableProps {
 }
 
 export function SalesByUtmTable({ data }: SalesByUtmTableProps) {
+  const getAvgFirstPayment = (row: UtmRow) => {
+    const value = row.total_first_sum ?? 0
+    if (value > 0) return value
+    return row.contract_count > 0 ? row.total_revenue / row.contract_count : 0
+  }
+
   const aggregated = useMemo(() => {
     const totalRevenue = data.reduce((a, r) => a + (r.total_revenue ?? 0), 0)
     const totalContracts = data.reduce((a, r) => a + (r.contract_count ?? 0), 0)
-    const totalFirstSum = data.reduce((a, r) => a + (r.total_first_sum ?? 0), 0)
+    const weightedFirstPayment = data.reduce(
+      (acc, row) => acc + getAvgFirstPayment(row) * (row.contract_count ?? 0),
+      0
+    )
     const avgRevenuePerContract = totalContracts > 0 ? Math.round(totalRevenue / totalContracts) : 0
-    const conversionRate = totalRevenue > 0 ? ((totalFirstSum / totalRevenue) * 100).toFixed(1) : "0.0"
-    return { totalRevenue, totalContracts, totalFirstSum, avgRevenuePerContract, conversionRate }
+    const avgFirstPayment = totalContracts > 0 ? Math.round(weightedFirstPayment / totalContracts) : 0
+    return { totalRevenue, totalContracts, avgRevenuePerContract, avgFirstPayment }
   }, [data])
 
   const rows = useMemo(
@@ -52,7 +61,11 @@ export function SalesByUtmTable({ data }: SalesByUtmTableProps) {
     <div className="space-y-4">
       {/* Мини-метрики */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Середня конверсія" value={`${aggregated.conversionRate}%`} subtitle="(перший платіж / виручка)" />
+        <MetricCard
+          title="Середній перший платіж"
+          value={`${aggregated.avgFirstPayment.toLocaleString("uk-UA")} ₴`}
+          subtitle="(оцінка, середнє по контрактах)"
+        />
         <MetricCard title="Загальна виручка" value={`${aggregated.totalRevenue.toLocaleString("uk-UA")} ₴`} />
         <MetricCard title="Усього контрактів" value={aggregated.totalContracts.toLocaleString("uk-UA")} />
         <MetricCard title="Середній чек" value={`${aggregated.avgRevenuePerContract.toLocaleString("uk-UA")} ₴`} />
@@ -101,7 +114,7 @@ export function SalesByUtmTable({ data }: SalesByUtmTableProps) {
                 <TableHead className="min-w-[200px]">Кампанія</TableHead>
                 <TableHead className="text-right">Контракти</TableHead>
                 <TableHead className="text-right">Виручка</TableHead>
-                <TableHead className="text-right">Перший платіж</TableHead>
+                <TableHead className="text-right">Сер. перший платіж</TableHead>
                 <TableHead className="min-w-[160px]">Доля виручки</TableHead>
               </TableRow>
             </TableHeader>
@@ -134,7 +147,7 @@ export function SalesByUtmTable({ data }: SalesByUtmTableProps) {
                       {row.total_revenue?.toLocaleString("uk-UA")} ₴
                     </TableCell>
                     <TableCell className="text-right tabular-nums align-top">
-                      {row.total_first_sum?.toLocaleString("uk-UA")} ₴
+                      {getAvgFirstPayment(row).toLocaleString("uk-UA")} ₴
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="flex flex-col gap-1">
@@ -166,7 +179,7 @@ export function SalesByUtmTable({ data }: SalesByUtmTableProps) {
                     {aggregated.totalRevenue.toLocaleString("uk-UA")} ₴
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {aggregated.totalFirstSum.toLocaleString("uk-UA")} ₴
+                    {aggregated.avgFirstPayment.toLocaleString("uk-UA")} ₴
                   </TableCell>
                   <TableCell className="text-right tabular-nums">100.0%</TableCell>
                 </TableRow>

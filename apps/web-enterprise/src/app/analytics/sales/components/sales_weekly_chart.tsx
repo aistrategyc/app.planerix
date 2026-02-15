@@ -1,17 +1,9 @@
 import * as React from "react"
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  Legend,
-} from "recharts"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { format } from "date-fns"
 import { uk } from "date-fns/locale"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipItemStyle, chartTooltipStyle } from "@/components/analytics/chart-theme"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 interface WeeklyRow {
   week_start: string
@@ -134,7 +126,7 @@ export function SalesWeeklyChart({ data }: SalesWeeklyChartProps) {
 
       {/* Столбчатый график */}
       <div className="rounded-lg border p-2 sm:p-3">
-        <ResponsiveContainer width="100%" height={320}>
+        <SafeResponsiveContainer width="100%" height={320}>
           <BarChart
             data={formattedData}
             margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
@@ -195,7 +187,7 @@ export function SalesWeeklyChart({ data }: SalesWeeklyChartProps) {
               />
             )}
           </BarChart>
-        </ResponsiveContainer>
+        </SafeResponsiveContainer>
       </div>
     </div>
   )

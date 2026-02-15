@@ -3,22 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useState, useMemo } from 'react';
-import {
-  Home,
-  Target,
-  ListChecks,
-  BarChart,
-  Users,
-  PieChart,
-  Calendar,
-  BrainCircuit,
-  FolderKanban,
-  LineChart,
-  Megaphone,
-  FileText,
-  Database,
-  Share2,
-} from 'lucide-react';
+import { Home, Target, ListChecks, BarChart, Users, PieChart, Calendar, BrainCircuit, FolderKanban, LineChart, Megaphone, FileText, Database, Share2 } from 'lucide-react';
 
 type NavItem = {
   href: string;

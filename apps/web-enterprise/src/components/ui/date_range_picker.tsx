@@ -1,16 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  format,
-  isEqual,
-  isValid,
-  startOfToday,
-  subDays,
-  subMonths,
-  subYears,
-  isAfter,
-} from "date-fns"
+import { format, isEqual, isValid, startOfToday, subDays, subMonths, subYears, isAfter } from "date-fns"
 import { CalendarIcon } from "lucide-react"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
@@ -64,13 +55,13 @@ export function DateRangePicker({ value, onChange, className, maxDate }: DateRan
 
   const presets: { label: string; range: DateRange }[] = React.useMemo(
     () => [
-      { label: "Вчера", range: { from: anchorDate, to: anchorDate } },
-      { label: "7 дней", range: { from: subDays(anchorDate, 6), to: anchorDate } },
-      { label: "30 дней", range: { from: subDays(anchorDate, 29), to: anchorDate } },
-      { label: "90 дней", range: { from: subDays(anchorDate, 89), to: anchorDate } },
-      { label: "Месяц", range: { from: subMonths(anchorDate, 1), to: anchorDate } },
-      { label: "Квартал", range: { from: subMonths(anchorDate, 3), to: anchorDate } },
-      { label: "Год", range: { from: subYears(anchorDate, 1), to: anchorDate } },
+      { label: "Yesterday", range: { from: anchorDate, to: anchorDate } },
+      { label: "7 days", range: { from: subDays(anchorDate, 6), to: anchorDate } },
+      { label: "30 days", range: { from: subDays(anchorDate, 29), to: anchorDate } },
+      { label: "90 days", range: { from: subDays(anchorDate, 89), to: anchorDate } },
+      { label: "Month", range: { from: subMonths(anchorDate, 1), to: anchorDate } },
+      { label: "Quarter", range: { from: subMonths(anchorDate, 3), to: anchorDate } },
+      { label: "Year", range: { from: subYears(anchorDate, 1), to: anchorDate } },
     ],
     [anchorDate]
   )
@@ -81,7 +72,7 @@ export function DateRangePicker({ value, onChange, className, maxDate }: DateRan
   const label =
     value.from && value.to && isValid(value.from) && isValid(value.to)
       ? `${format(value.from, "dd.MM.yyyy")} – ${format(value.to, "dd.MM.yyyy")}`
-      : "Выбрать период"
+      : "Select period"
 
   const activePreset = presets.find((p) => isSameRange(p.range, value))
 
@@ -163,10 +154,10 @@ export function DateRangePicker({ value, onChange, className, maxDate }: DateRan
         />
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={cancelSelection}>
-            Закрити
+            Close
           </Button>
           <Button size="sm" onClick={applyRange} disabled={!tempRange.from || !tempRange.to}>
-            Застосувати
+            Apply
           </Button>
         </div>
       </PopoverContent>

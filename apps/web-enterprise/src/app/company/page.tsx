@@ -10,20 +10,12 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Loader2, Plus, Building2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { PageHeader } from "@/components/layout/PageHeader"
 
-type TabKey = "overview" | "departments" | "team" | "projects"
+type TabKey = "overview" | "departments" | "team"
 
 export default function CompanyPageContent() {
   const { toast } = useToast()
@@ -239,12 +231,6 @@ export default function CompanyPageContent() {
           >
             Team
           </Button>
-          <Button
-            variant={active === "projects" ? "default" : "secondary"}
-            onClick={() => setActive("projects")}
-          >
-            Projects
-          </Button>
         </div>
 
         {/* Panels */}
@@ -337,18 +323,6 @@ export default function CompanyPageContent() {
           </Card>
         )}
 
-        {active === "projects" && (
-          <Card className="glass-panel">
-            <CardContent className="p-6 space-y-2">
-              <div className="text-sm text-muted-foreground">
-                Projects module placeholder. Link this with your projects API/routes (e.g., /projects) when ready.
-              </div>
-              <div>
-                {/* <Button asChild><Link href="/projects"><Plus className="mr-2 h-4 w-4" />Create project</Link></Button> */}
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
     </ProtectedRoute>
   )

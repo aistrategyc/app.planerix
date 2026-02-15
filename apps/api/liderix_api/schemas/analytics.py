@@ -4,7 +4,7 @@ Based on real ITstep database structure and requirements
 """
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from pydantic import BaseModel, Field
 from enum import Enum
 

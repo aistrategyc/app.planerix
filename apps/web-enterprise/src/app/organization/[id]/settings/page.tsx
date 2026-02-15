@@ -61,6 +61,12 @@ export default function OrganizationSettingsPage() {
   }
 
   if (error || !organization) {
+    const errorMessage =
+      typeof error === "string"
+        ? error
+        : error && typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string"
+          ? ((error as { message?: string }).message ?? "Не удалось загрузить данные организации")
+          : "Не удалось загрузить данные организации";
     return (
       <div className="space-y-6">
         <Card className="glass-panel">
@@ -71,9 +77,7 @@ export default function OrganizationSettingsPage() {
           <CardContent>
             <div className="space-y-4">
               <p className="text-sm text-red-600">
-                {typeof error === "string"
-                  ? error
-                  : (error as { message?: string })?.message || "Не удалось загрузить данные организации"}
+                {errorMessage}
               </p>
               <Button variant="outline" onClick={() => router.refresh()}>Повторить</Button>
             </div>
@@ -83,13 +87,15 @@ export default function OrganizationSettingsPage() {
     );
   }
 
-  const handleOrganizationUpdated = async (data: Partial<Organization>) => {
+  const handleOrganizationUpdated = async (data: Partial<Organization>): Promise<Organization> => {
     try {
-      await actions.updateOrganization(data);
+      const updated = await actions.updateOrganization(data);
       toast({ title: "Сохранено", description: "Организация обновлена" });
+      return updated;
     } catch (e: unknown) {
       const error = e as { message?: string }
       toast({ title: "Ошибка", description: error?.message ?? "Не удалось обновить", variant: "destructive" });
+      throw e;
     }
   };
 

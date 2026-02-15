@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.exc import IntegrityError
@@ -13,7 +13,7 @@ from liderix_api.services.auth import get_current_user
 from liderix_api.services.guards import tenant_guard, TenantContext, require_perm
 from liderix_api.models.users import User
 from liderix_api.models.organization import Organization
-from liderix_api.models.memberships import Membership, MembershipRole, MembershipStatus
+from liderix_api.models.memberships import Membership, MembershipStatus
 from liderix_api.models.invitations import Invitation, InvitationStatus
 from liderix_api.config.settings import settings
 from liderix_api.schemas.invitations import (
@@ -61,7 +61,7 @@ async def create_invitation(
     try:
         await session.commit()
         await session.refresh(inv)
-    except IntegrityError as e:
+    except IntegrityError:
         await session.rollback()
         # уникальность (org_id, invited_email, status=PENDING)
         raise HTTPException(

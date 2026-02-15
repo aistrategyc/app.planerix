@@ -5,11 +5,9 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, desc, cast, Integer
-from redis.asyncio import Redis
 from liderix_api.db import get_async_session
 from liderix_api.models.audit import EventLog
 from liderix_api.models.users import User
-from liderix_api.config.settings import settings  # Убедились, что именно core.config
 # Зависимость админа: должна валидировать, что запрос от админа/супера
 from liderix_api.services.auth import require_admin  # Изменили на services (по структуре проекта)
 from liderix_api.services.redis_client import get_redis_client

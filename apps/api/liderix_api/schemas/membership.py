@@ -1,8 +1,8 @@
 # apps/api/liderix_api/schemas/membership.py
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator, EmailStr, EmailStr
-from typing import Optional, List, Generic, TypeVar, Dict
+from pydantic import BaseModel, Field, ConfigDict, field_validator, EmailStr
+from typing import Optional, List, Generic, TypeVar, Dict, Literal
 from uuid import UUID
 from datetime import datetime
 from liderix_api.enums import MembershipRole, MembershipStatus

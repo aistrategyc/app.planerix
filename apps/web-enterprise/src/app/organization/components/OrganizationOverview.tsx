@@ -4,15 +4,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { 
-  Users, 
-  MapPin, 
-  Calendar,
-  Globe,
-  Phone,
-  Briefcase,
-  ChevronRight
-} from "lucide-react";
+import { Users, MapPin, Calendar, Globe, Phone, Briefcase, ChevronRight } from "lucide-react";
 import type { Organization, Member } from "../hooks/useOrganization";
 
 interface OrganizationOverviewProps {
@@ -31,6 +23,10 @@ export function OrganizationOverview({
   const recentMembers = members
     .sort((a, b) => new Date(b.joined_at).getTime() - new Date(a.joined_at).getTime())
     .slice(0, 5);
+  const website =
+    typeof organization.custom_fields?.website === "string" ? organization.custom_fields.website : undefined;
+  const phone =
+    typeof organization.custom_fields?.phone === "string" ? organization.custom_fields.phone : undefined;
 
   return (
     <div className="grid lg:grid-cols-3 gap-6">
@@ -70,23 +66,23 @@ export function OrganizationOverview({
             <div>
               <h4 className="font-medium text-sm text-slate-600 mb-2">Контакты</h4>
               <div className="space-y-3">
-                {organization.custom_fields?.website && (
+                {website && (
                   <div className="flex items-center gap-2">
                     <Globe className="w-4 h-4 text-slate-400" />
                     <a 
-                      href={organization.custom_fields.website} 
+                      href={website} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="text-sm text-blue-600 hover:underline"
                     >
-                      {organization.custom_fields.website}
+                      {website}
                     </a>
                   </div>
                 )}
-                {organization.custom_fields?.phone && (
+                {phone && (
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4 text-slate-400" />
-                    <span className="text-sm">{organization.custom_fields.phone}</span>
+                    <span className="text-sm">{phone}</span>
                   </div>
                 )}
                 {organization.address && (

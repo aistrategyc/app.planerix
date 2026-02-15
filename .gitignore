@@ -12,3 +12,7 @@ docs/_snapshots/.env*
 apps/planerix/.env*
 docs/_snapshots/
 docker-compose.yml.bak*
+_archive/
+_backups/
+_import/
+backups/

@@ -37,7 +37,7 @@ services:
 
   api:
     build:
-      context: ./api
+      context: ./apps/api
     container_name: planerix-api
     env_file:
       - ${ENV_FILE:-./.env}
@@ -51,7 +51,7 @@ services:
 
   web:
     build:
-      context: ./web-enterprise
+      context: ./apps/web-enterprise
       args:
         NEXT_PUBLIC_API_ORIGIN: ${NEXT_PUBLIC_API_ORIGIN}
         NEXT_PUBLIC_API_PREFIX: ${NEXT_PUBLIC_API_PREFIX}
@@ -105,7 +105,7 @@ services:
     image: qdrant/qdrant:latest
     container_name: planerix-qdrant
     environment:
-      - QDRANT__SERVICE__API_KEY=REPLACE_ME
+      - QDRANT__SERVICE__API_KEY=${QDRANT__SERVICE__API_KEY}
     volumes:
       - planerix-qdrant-prod-data:/qdrant/storage
     ports:

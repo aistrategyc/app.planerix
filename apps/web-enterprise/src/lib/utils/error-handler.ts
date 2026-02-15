@@ -14,6 +14,17 @@ export class AppError extends Error {
   }
 }
 
+const coerceDetailToString = (detail: unknown): string => {
+  if (typeof detail === "string") return detail
+  if (detail === null || detail === undefined) return ""
+  if (typeof detail === "number" || typeof detail === "boolean") return String(detail)
+  try {
+    return JSON.stringify(detail)
+  } catch {
+    return String(detail)
+  }
+}
+
 export function parseAPIError(error: unknown): APIError {
   if (error instanceof AxiosError) {
     const response = error.response?.data as
@@ -25,17 +36,17 @@ export function parseAPIError(error: unknown): APIError {
       return {
         type: response.type,
         title: response.title,
-        detail: response.detail,
+        detail: coerceDetailToString(response.detail) || "Server error",
         status: response.status || error.response?.status || 500
       }
     }
     
     // Если есть detail field (FastAPI format)
     if (response?.detail) {
-      let detail = response.detail
+      let detail: string = coerceDetailToString(response.detail) || "Server error"
       
-      if (Array.isArray(detail)) {
-        const msgs = detail
+      if (Array.isArray(response.detail)) {
+        const msgs = response.detail
           .map((entry) => {
             if (entry && typeof entry === 'object') {
               const candidate = entry as { msg?: unknown; message?: unknown }
@@ -46,9 +57,11 @@ export function parseAPIError(error: unknown): APIError {
           })
           .filter((msg): msg is string => Boolean(msg))
         detail = msgs.length ? msgs.join(', ') : 'Validation error'
-      } else if (typeof detail === 'object') {
-        const detailObj = detail as { detail?: string; title?: string }
-        detail = detailObj.detail || detailObj.title || 'Server error'
+      } else if (typeof response.detail === 'object' && response.detail !== null) {
+        const detailObj = response.detail as { detail?: unknown; title?: unknown }
+        const nestedDetail = typeof detailObj.detail === "string" ? detailObj.detail : undefined
+        const nestedTitle = typeof detailObj.title === "string" ? detailObj.title : undefined
+        detail = nestedDetail || nestedTitle || detail
       }
       
       return {

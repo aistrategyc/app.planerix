@@ -1,9 +1,7 @@
 # apps/api/liderix_api/routes/auth/login.py
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Optional
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Request, Response
 from redis.exceptions import ConnectionError as RedisConnectionError

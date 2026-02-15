@@ -2,7 +2,6 @@ from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List
 import re
 
-from uuid import UUID
 
 class RegisterSchema(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, description="Username (3-50 characters)")

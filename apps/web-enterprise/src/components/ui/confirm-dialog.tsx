@@ -3,14 +3,7 @@
 import * as React from "react"
 import { AlertTriangle, Info, CheckCircle, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalTitle,
-  ModalDescription,
-  ModalFooter,
-} from "./modal"
+import { Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription, ModalFooter } from "./modal"
 
 interface ConfirmDialogProps {
   isOpen: boolean

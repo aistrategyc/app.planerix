@@ -2,15 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AttributionFilterBar } from "@/app/attribution/components/AttributionFilterBar"
 import { useAttributionFilters } from "@/app/attribution/hooks/useAttributionFilters"
@@ -194,9 +186,6 @@ export default function AttributionInteractionsClient() {
     }
     if (appliedFilters.cityId !== "all") {
       params.id_city = appliedFilters.cityId
-    }
-    if (appliedFilters.platform !== "all") {
-      params.platform = appliedFilters.platform
     }
     if (appliedFilters.channel !== "all") {
       params.channel = appliedFilters.channel
@@ -476,54 +465,6 @@ export default function AttributionInteractionsClient() {
                       <TableCell className="text-right">{formatNumber(row.contracts_cnt_14d)}</TableCell>
                       <TableCell className="text-right">{formatNumber(row.contracts_cnt_30d)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(row.revenue_30d)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Lead table (sample)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {leadsWidget?.meta?.missing_view ? (
-              <WidgetStatus title="Нет витрины лидов" description="attr.interactions.leads_table не подключена." />
-            ) : leadRows.length === 0 && !isLoading ? (
-              <div className="text-sm text-muted-foreground">Нет лидов для выбранного периода.</div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Lead</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>UTM</TableHead>
-                    <TableHead className="text-right">Payments</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {leadRows.slice(0, 10).map((row, index) => (
-                    <TableRow key={`${row.lead_id ?? index}`}>
-                      <TableCell>
-                        <div className="font-medium">#{row.lead_id}</div>
-                        <div className="text-xs text-muted-foreground">{row.branch_name ?? ""}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-xs">{row.first_contact_at ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {row.first_phone ?? row.first_email ?? ""}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-xs">{row.first_utm_source ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">{row.first_utm_campaign ?? ""}</div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant={row.has_contract ? "success" : "outline"}>
-                          {formatCurrency(row.total_payments)}
-                        </Badge>
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

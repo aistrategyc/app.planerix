@@ -1,7 +1,6 @@
 from __future__ import annotations
 import uuid
-from enum import Enum as PythonEnum
-from sqlalchemy import Column, String, Text, Enum as SQLEnum, DateTime, ForeignKey, Index, Integer, Boolean, UniqueConstraint, Float
+from sqlalchemy import Column, String, Text, Enum as SQLEnum, DateTime, ForeignKey, Index, Boolean, Float
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
 from liderix_api.db import Base

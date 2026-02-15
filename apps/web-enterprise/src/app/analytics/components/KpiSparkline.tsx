@@ -1,8 +1,9 @@
 "use client"
 
-import { Line, LineChart, ResponsiveContainer } from "recharts"
+import { Line, LineChart } from 'recharts'
 import { cn } from "@/lib/utils"
 import { CHART_COLORS } from "@/components/analytics/chart-theme"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 type SparklinePoint = {
   value: number | null
@@ -22,11 +23,11 @@ export function KpiSparkline({ data, stroke = CHART_COLORS.primary, className }:
 
   return (
     <div className={cn("h-10 w-full", className)}>
-      <ResponsiveContainer width="100%" height="100%">
+      <SafeResponsiveContainer width="100%" height="100%">
         <LineChart data={cleaned}>
           <Line type="monotone" dataKey="value" stroke={stroke} strokeWidth={2} dot={false} />
         </LineChart>
-      </ResponsiveContainer>
+      </SafeResponsiveContainer>
     </div>
   )
 }

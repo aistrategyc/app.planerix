@@ -7,7 +7,6 @@ export type AttributionFiltersValue = {
   compareMode: CompareMode
   compareRange: DateRange
   cityId: string
-  platform: string
   channel: string
   device: string
   conversionType: string

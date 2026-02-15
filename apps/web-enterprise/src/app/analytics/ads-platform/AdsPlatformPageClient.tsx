@@ -9,10 +9,17 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AnalyticsEmptyState } from "@/components/analytics/AnalyticsEmptyState"
 import { Separator } from "@/components/ui/separator"
 import { AnalyticsFilters, AnalyticsFiltersValue } from "@/app/analytics/components/AnalyticsFilters"
+import { fetchWidget, fetchWidgetRange, WidgetRow } from "@/lib/api/analytics-widgets"
+import { WidgetTable } from "@/components/analytics/WidgetTable"
+import { WidgetStatus } from "@/app/analytics/components/WidgetStatus"
 import { api } from "@/lib/api/config"
-import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts"
+import { LineChart, Line, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipItemStyle, chartTooltipStyle } from "@/components/analytics/chart-theme"
 import { PageHeader } from "@/components/layout/PageHeader"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
+import { formatCurrency, formatNumber } from "@/app/analytics/utils/formatters"
+import { buildLastWeekRange, resolveDefaultCityId } from "@/app/analytics/utils/defaults"
+import { useCities } from "@/app/analytics/hooks/use_cities"
 
 interface CampaignRow {
   campaign_id: string
@@ -52,6 +59,8 @@ interface SpendContractsRow {
   contracts_meta?: number | null
   contracts_gads?: number | null
   contracts_offline?: number | null
+  revenue_all?: number | null
+  payments_all?: number | null
 }
 
 interface MarketingResponse {
@@ -59,11 +68,6 @@ interface MarketingResponse {
   channel_mix: ChannelMixRow[]
   spend_vs_contracts: SpendContractsRow[]
 }
-
-const formatCurrency = (value: number | null | undefined) =>
-  value == null ? "—" : value.toLocaleString("uk-UA", { style: "currency", currency: "UAH" })
-
-const formatNumber = (value: number | null | undefined) => (value == null ? "—" : value.toLocaleString("uk-UA"))
 
 const isNumericLabel = (value?: string | null) => Boolean(value && /^\d+$/.test(value.trim()))
 
@@ -175,33 +179,90 @@ export default function AdsPlatformPageClient() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const searchKey = searchParams.toString()
+  const { cities } = useCities()
+  const defaultCityId = useMemo(() => resolveDefaultCityId(cities), [cities])
   const today = useMemo(() => new Date(), [])
   const [draftFilters, setDraftFilters] = useState<AnalyticsFiltersValue>({
     dateRange: {},
     cityId: "all",
-    platform: "all",
   })
   const [appliedFilters, setAppliedFilters] = useState<AnalyticsFiltersValue>({
     dateRange: {},
     cityId: "all",
-    platform: "all",
   })
   const [data, setData] = useState<MarketingResponse>({ campaigns: [], channel_mix: [], spend_vs_contracts: [] })
   const [isLoading, setIsLoading] = useState(true)
   const [showAllCampaigns, setShowAllCampaigns] = useState(false)
+  const [campaignsTableRows, setCampaignsTableRows] = useState<WidgetRow[]>([])
+  const [platformCampaignsRows, setPlatformCampaignsRows] = useState<WidgetRow[]>([])
+  const [campaignsTableMissing, setCampaignsTableMissing] = useState(false)
+  const [platformCampaignsMissing, setPlatformCampaignsMissing] = useState(false)
+  const [isLoadingWidgets, setIsLoadingWidgets] = useState(false)
+  const [defaultsApplied, setDefaultsApplied] = useState(false)
 
   useEffect(() => {
+    const cityId = searchParams.get("id_city") ?? (defaultCityId ? String(defaultCityId) : "all")
     const nextFilters: AnalyticsFiltersValue = {
       dateRange: {
         from: parseDateParam(searchParams.get("date_from")),
         to: parseDateParam(searchParams.get("date_to")),
       },
-      cityId: searchParams.get("id_city") ?? "all",
-      platform: searchParams.get("platform") ?? "all",
+      cityId,
     }
     setDraftFilters(nextFilters)
     setAppliedFilters(nextFilters)
-  }, [searchKey, searchParams])
+  }, [searchKey, searchParams, defaultCityId])
+
+  useEffect(() => {
+    if (defaultsApplied) return
+    if (searchParams.get("date_from") || searchParams.get("date_to")) {
+      setDefaultsApplied(true)
+      return
+    }
+    let active = true
+    const hydrateDefaults = async () => {
+      try {
+        const range = await fetchWidgetRange("ads.campaigns_table")
+        if (!active) return
+        const dateRange = buildLastWeekRange(range?.max_date ?? null, 59)
+        if (!dateRange) {
+          const fallbackTo = new Date()
+          const fallbackFrom = new Date()
+          fallbackFrom.setDate(fallbackTo.getDate() - 59)
+          const nextFilters: AnalyticsFiltersValue = {
+            dateRange: { from: fallbackFrom, to: fallbackTo },
+            cityId: defaultCityId ? String(defaultCityId) : "all",
+          }
+          setDraftFilters(nextFilters)
+          setAppliedFilters(nextFilters)
+          return
+        }
+        const nextFilters: AnalyticsFiltersValue = {
+          dateRange,
+          cityId: defaultCityId ? String(defaultCityId) : "all",
+        }
+        setDraftFilters(nextFilters)
+        setAppliedFilters(nextFilters)
+      } catch (error) {
+        if (!active) return
+        const fallbackTo = new Date()
+        const fallbackFrom = new Date()
+        fallbackFrom.setDate(fallbackTo.getDate() - 59)
+        const nextFilters: AnalyticsFiltersValue = {
+          dateRange: { from: fallbackFrom, to: fallbackTo },
+          cityId: defaultCityId ? String(defaultCityId) : "all",
+        }
+        setDraftFilters(nextFilters)
+        setAppliedFilters(nextFilters)
+      } finally {
+        if (active) setDefaultsApplied(true)
+      }
+    }
+    hydrateDefaults()
+    return () => {
+      active = false
+    }
+  }, [defaultsApplied, searchParams, defaultCityId])
 
   const updateQuery = (updates: Record<string, string | null | undefined>) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -222,19 +283,17 @@ export default function AdsPlatformPageClient() {
       date_from: draftFilters.dateRange.from ? buildDateKey(draftFilters.dateRange.from) : null,
       date_to: draftFilters.dateRange.to ? buildDateKey(draftFilters.dateRange.to) : null,
       id_city: draftFilters.cityId === "all" ? null : draftFilters.cityId,
-      platform: draftFilters.platform === "all" ? null : draftFilters.platform,
     })
   }
 
   const resetFilters = () => {
-    const resetValue: AnalyticsFiltersValue = { dateRange: {}, cityId: "all", platform: "all" }
+    const resetValue: AnalyticsFiltersValue = { dateRange: {}, cityId: "all" }
     setDraftFilters(resetValue)
     setAppliedFilters(resetValue)
     updateQuery({
       date_from: null,
       date_to: null,
       id_city: null,
-      platform: null,
     })
   }
 
@@ -247,7 +306,6 @@ export default function AdsPlatformPageClient() {
           date_from: appliedFilters.dateRange.from ? buildDateKey(appliedFilters.dateRange.from) : undefined,
           date_to: appliedFilters.dateRange.to ? buildDateKey(appliedFilters.dateRange.to) : undefined,
           city_id: appliedFilters.cityId === "all" ? undefined : Number(appliedFilters.cityId),
-          platform: appliedFilters.platform === "all" ? undefined : appliedFilters.platform,
         }
         const response = await api.get<MarketingResponse>("/analytics/marketing/", { params })
         if (!active) return
@@ -270,6 +328,43 @@ export default function AdsPlatformPageClient() {
     }
   }, [appliedFilters])
 
+  useEffect(() => {
+    let active = true
+    const loadWidgets = async () => {
+      setIsLoadingWidgets(true)
+      try {
+        const params = {
+          start_date: appliedFilters.dateRange.from ? buildDateKey(appliedFilters.dateRange.from) : undefined,
+          end_date: appliedFilters.dateRange.to ? buildDateKey(appliedFilters.dateRange.to) : undefined,
+          id_city: appliedFilters.cityId === "all" ? undefined : Number(appliedFilters.cityId),
+          limit: 200,
+        }
+        const [campaignsRes, platformRes] = await Promise.all([
+          fetchWidget("ads.campaigns_table", params),
+          fetchWidget("ads.platform.campaigns_table", params),
+        ])
+        if (!active) return
+        setCampaignsTableMissing(Boolean(campaignsRes.missing_view))
+        setPlatformCampaignsMissing(Boolean(platformRes.missing_view))
+        setCampaignsTableRows(campaignsRes.items ?? [])
+        setPlatformCampaignsRows(platformRes.items ?? [])
+      } catch (error) {
+        if (!active) return
+        console.error("Failed to load campaigns tables:", error)
+        setCampaignsTableRows([])
+        setPlatformCampaignsRows([])
+        setCampaignsTableMissing(false)
+        setPlatformCampaignsMissing(false)
+      } finally {
+        if (active) setIsLoadingWidgets(false)
+      }
+    }
+    loadWidgets()
+    return () => {
+      active = false
+    }
+  }, [appliedFilters])
+
   const hasData = data.campaigns.length > 0 || data.channel_mix.length > 0 || data.spend_vs_contracts.length > 0
 
   const spendTotal = useMemo(
@@ -278,6 +373,14 @@ export default function AdsPlatformPageClient() {
   )
   const contractsTotal = useMemo(
     () => data.spend_vs_contracts.reduce((sum, row) => sum + (toNumber(row.contracts_all) ?? 0), 0),
+    [data.spend_vs_contracts]
+  )
+  const revenueTotal = useMemo(
+    () => data.spend_vs_contracts.reduce((sum, row) => sum + (toNumber(row.revenue_all) ?? 0), 0),
+    [data.spend_vs_contracts]
+  )
+  const paymentsTotal = useMemo(
+    () => data.spend_vs_contracts.reduce((sum, row) => sum + (toNumber(row.payments_all) ?? 0), 0),
     [data.spend_vs_contracts]
   )
   const cpaProxy = useMemo(
@@ -303,6 +406,8 @@ export default function AdsPlatformPageClient() {
         date: row.date_key,
         spend: toNumber(row.spend_all) ?? 0,
         contracts: toNumber(row.contracts_all) ?? 0,
+        revenue: toNumber(row.revenue_all) ?? 0,
+        payments: toNumber(row.payments_all) ?? 0,
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [data.spend_vs_contracts])
@@ -323,7 +428,6 @@ export default function AdsPlatformPageClient() {
         value={draftFilters}
         onDateChange={(value) => setDraftFilters((prev) => ({ ...prev, dateRange: value }))}
         onCityChange={(value) => setDraftFilters((prev) => ({ ...prev, cityId: value }))}
-        onPlatformChange={(value) => setDraftFilters((prev) => ({ ...prev, platform: value }))}
         onApply={applyFilters}
         onReset={resetFilters}
         isLoading={isLoading}
@@ -338,7 +442,7 @@ export default function AdsPlatformPageClient() {
         </div>
       ) : hasData ? (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground">Витрати</CardTitle>
@@ -350,6 +454,18 @@ export default function AdsPlatformPageClient() {
                 <CardTitle className="text-sm text-muted-foreground">Контракти</CardTitle>
               </CardHeader>
               <CardContent className="text-2xl font-semibold">{formatNumber(contractsTotal)}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Сума договорів</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-semibold">{formatCurrency(revenueTotal)}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Оплати</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-semibold">{formatCurrency(paymentsTotal)}</CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
@@ -368,7 +484,7 @@ export default function AdsPlatformPageClient() {
               </CardHeader>
               <CardContent>
                 <div className="h-[280px]">
-                  <ResponsiveContainer>
+                  <SafeResponsiveContainer>
                     <LineChart data={trendData}>
                       <CartesianGrid {...chartGridProps} />
                       <XAxis dataKey="date" {...chartAxisProps} />
@@ -378,7 +494,7 @@ export default function AdsPlatformPageClient() {
                       <Line type="monotone" dataKey="spend" stroke={CHART_COLORS.primary} yAxisId="left" />
                       <Line type="monotone" dataKey="contracts" stroke={CHART_COLORS.secondary} yAxisId="right" />
                     </LineChart>
-                  </ResponsiveContainer>
+                  </SafeResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
@@ -411,6 +527,62 @@ export default function AdsPlatformPageClient() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Payments vs Contracts</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[260px]">
+                <SafeResponsiveContainer>
+                  <LineChart data={trendData}>
+                    <CartesianGrid {...chartGridProps} />
+                    <XAxis dataKey="date" {...chartAxisProps} />
+                    <YAxis yAxisId="left" {...chartAxisProps} />
+                    <YAxis yAxisId="right" orientation="right" {...chartAxisProps} />
+                    <Tooltip
+                      contentStyle={chartTooltipStyle}
+                      itemStyle={chartTooltipItemStyle}
+                      formatter={(value, name) => [
+                        name === "payments" ? formatCurrency(Number(value)) : formatNumber(Number(value)),
+                        name === "payments" ? "Оплати" : "Договори",
+                      ]}
+                    />
+                    <Line type="monotone" dataKey="contracts" stroke={CHART_COLORS.secondary} yAxisId="left" />
+                    <Line type="monotone" dataKey="payments" stroke={CHART_COLORS.primary} yAxisId="right" />
+                  </LineChart>
+                </SafeResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Revenue vs Spend</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[260px]">
+                <SafeResponsiveContainer>
+                  <LineChart data={trendData}>
+                    <CartesianGrid {...chartGridProps} />
+                    <XAxis dataKey="date" {...chartAxisProps} />
+                    <YAxis yAxisId="left" {...chartAxisProps} />
+                    <YAxis yAxisId="right" orientation="right" {...chartAxisProps} />
+                    <Tooltip
+                      contentStyle={chartTooltipStyle}
+                      itemStyle={chartTooltipItemStyle}
+                      formatter={(value, name) => [
+                        formatCurrency(Number(value)),
+                        name === "revenue" ? "Дохід (договори)" : "Витрати",
+                      ]}
+                    />
+                    <Line type="monotone" dataKey="spend" stroke={CHART_COLORS.primary} yAxisId="left" />
+                    <Line type="monotone" dataKey="revenue" stroke={CHART_COLORS.quaternary} yAxisId="right" />
+                  </LineChart>
+                </SafeResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -476,6 +648,36 @@ export default function AdsPlatformPageClient() {
               {!isLoading && data.campaigns.length === 0 && (
                 <div className="text-sm text-muted-foreground">Немає даних по кампаніям.</div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Campaigns tables (ads)</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-sm font-semibold">ads.campaigns_table</div>
+                {campaignsTableMissing ? (
+                  <WidgetStatus title="Нет витрины campaigns_table" description="ads.campaigns_table не подключена." />
+                ) : (
+                  <WidgetTable
+                    rows={campaignsTableRows}
+                    emptyLabel={isLoadingWidgets ? "Loading..." : "Нет данных campaigns_table."}
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-semibold">ads.platform.campaigns_table</div>
+                {platformCampaignsMissing ? (
+                  <WidgetStatus title="Нет витрины platform campaigns_table" description="ads.platform.campaigns_table не подключена." />
+                ) : (
+                  <WidgetTable
+                    rows={platformCampaignsRows}
+                    emptyLabel={isLoadingWidgets ? "Loading..." : "Нет данных platform campaigns_table."}
+                  />
+                )}
+              </div>
             </CardContent>
           </Card>
         </>

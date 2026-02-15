@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, Dict, Any, List, Literal, Generic, TypeVar
 from uuid import UUID
 from datetime import datetime
-import re
 
 # --------------------------------------
 # Enums / Literals (должны совпадать с БД)

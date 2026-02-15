@@ -4,7 +4,6 @@ Source: dashboards.fact_leads + v5_bi_platform_daily
 Shows: top performers, bottom performers, detailed metrics
 """
 import logging
-from typing import Optional
 from datetime import date
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession

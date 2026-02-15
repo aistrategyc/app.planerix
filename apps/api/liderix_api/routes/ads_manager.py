@@ -18,7 +18,7 @@ from ..services.dependencies import get_current_user
 router = APIRouter(prefix="/ads-manager", tags=["ads-manager"])
 
 
-@router.get("", response_model=List[AdRead])
+@router.get("", response_model=List[AdRead], deprecated=True)
 async def get_ads(
     date_from: date = Query(default=None, description="Start date for filtering ads"),
     date_to: date = Query(default=None, description="End date for filtering ads"),
@@ -154,7 +154,7 @@ async def get_ads(
     return ads
 
 
-@router.get("/stats", response_model=AdStatsResponse)
+@router.get("/stats", response_model=AdStatsResponse, deprecated=True)
 async def get_ads_stats(
     date_from: date = Query(default=None, description="Start date for statistics"),
     date_to: date = Query(default=None, description="End date for statistics"),

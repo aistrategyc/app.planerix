@@ -609,14 +609,15 @@ export class CalendarAPI {
   }
 
   private static projectToCalendarEvent(project: ProjectLike): CalendarEvent {
+    const endDate = project.end_date || project.created_at || new Date().toISOString()
     return {
       id: `project-${project.id}`,
       title: `📄 ${project.name} Deadline`,
       description: project.description,
       event_type: EventType.PROJECT_MILESTONE,
       status: EventStatus.CONFIRMED,
-      start_date: project.end_date,
-      end_date: project.end_date,
+      start_date: endDate,
+      end_date: endDate,
       is_all_day: true,
       timezone: 'UTC',
       recurrence_type: RecurrenceType.NONE,

@@ -10,20 +10,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AnalyticsEmptyState } from "@/components/analytics/AnalyticsEmptyState"
+import { WidgetTable } from "@/components/analytics/WidgetTable"
 import { AnalyticsFilters, AnalyticsFiltersValue } from "@/app/analytics/components/AnalyticsFilters"
 import { KpiSparkline } from "@/app/analytics/components/KpiSparkline"
 import { WidgetStatus } from "@/app/analytics/components/WidgetStatus"
 import { useCities } from "@/app/analytics/hooks/use_cities"
-import { buildLastWeekRange } from "@/app/analytics/utils/defaults"
+import { buildLastWeekRange, resolveDefaultCityId } from "@/app/analytics/utils/defaults"
 import { formatCurrency, formatNumber, formatPercent, parseNumeric } from "@/app/analytics/utils/formatters"
 import { api } from "@/lib/api/config"
-import { fetchWidgetRange, fetchWidgetsBatch } from "@/lib/api/analytics-widgets"
+import { fetchWidgetRange, fetchWidgetsBatch, WidgetRow } from "@/lib/api/analytics-widgets"
+import { camelizeUnknownRecordShallow, parseWidgetRowsSafe } from "@/lib/widgets/widgetParsing"
+import { adsKpiTotalRowSchema } from "@/lib/widgets/widgetSchemas"
 import { useAuth } from "@/contexts/auth-context"
 import { ArrowDownRight, ArrowUpRight, Copy, ExternalLink, ImageOff } from "lucide-react"
-import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, CartesianGrid, ComposedChart, Legend, Line, Tooltip, XAxis, YAxis } from 'recharts'
 import { InsightsPanel } from "@/app/analytics/components/InsightsPanel"
 import { CHART_COLORS, chartAxisProps, chartGridProps, chartTooltipItemStyle, chartTooltipStyle } from "@/components/analytics/chart-theme"
 import { PageHeader } from "@/components/layout/PageHeader"
+import { SafeResponsiveContainer } from "@/components/analytics/SafeResponsiveContainer"
 
 type AdsDailyRow = {
   date_key?: string | null
@@ -104,17 +108,45 @@ type AdsKpiRow = {
 
 type AdsByPlatformRow = {
   ad_id: string | number | null
+  campaign_id?: string | number | null
   campaign_name: string
+  adset_id?: string | number | null
   adset_name: string
   ad_name: string
+  creative_title?: string | null
+  creative_body?: string | null
+  preview_image_url?: string | null
+  thumbnail_url?: string | null
+  media_image_src?: string | null
+  permalink_url?: string | null
+  link_url?: string | null
   spend: number
   clicks: number
   impressions: number
   conversions: number
+  fb_leads?: number | null
+  crm_requests_cnt?: number | null
+  contracts_cnt?: number | null
+  paid_sum?: number | null
   ctr: number | null
   cpc: number | null
   cpa: number | null
   cpm: number | null
+  cpl?: number | null
+  roas_paid?: number | null
+}
+
+type TotalsAccumulator = {
+  spend: number
+  clicks: number
+  impressions: number
+  conversions: number
+  platformLeads: number
+  crmRequests: number
+  contracts: number
+  revenue: number
+  payments: number
+  conversionValue: number
 }
 
 type CreativeSortMode = "spend" | "leads" | "ctr" | "contracts" | "roas"
@@ -134,6 +166,11 @@ type AdsCreativeRow = {
   date_key?: string | null
   id_city?: number | null
   platform?: string | null
+  currency_code?: string | null
+  creative_key?: string | number | null
+  creative_id?: string | number | null
+  creative_name?: string | null
+  creative_type?: string | null
   campaign_id?: string | number | null
   campaign_name?: string | null
   adset_id?: string | number | null
@@ -142,10 +179,16 @@ type AdsCreativeRow = {
   ad_name?: string | null
   link_url?: string | null
   permalink_url?: string | null
+  thumbnail_url?: string | null
+  preview_image_url?: string | null
+  media_image_src?: string | null
   object_type?: string | null
   creative_title?: string | null
   creative_body?: string | null
   conversions?: number | null
+  leads?: number | null
+  purchases?: number | null
+  post_message?: string | null
   spend?: number | null
   clicks?: number | null
   impressions?: number | null
@@ -189,6 +232,7 @@ type GadsKeywordDailyRow = {
   currency_code?: string | null
   impressions?: number | null
   clicks?: number | null
+  cost?: number | null
   spend?: number | null
   cpc?: number | null
   ctr?: number | null
@@ -209,6 +253,25 @@ type GadsSpendRow = {
   conversions?: number | null
   cpc?: number | null
   ctr?: number | null
+}
+
+type GadsCampaignPreviewRow = {
+  date_key?: string | null
+  city_id?: number | null
+  platform?: string | null
+  customer_id?: string | number | null
+  campaign_id?: string | number | null
+  campaign_name?: string | null
+  advertising_channel_type?: string | null
+  creative_id?: string | number | null
+  creative_title?: string | null
+  preview_image_url?: string | null
+  has_preview?: boolean | null
+  impressions?: number | null
+  clicks?: number | null
+  spend?: number | null
+  conversions?: number | null
+  conversions_value?: number | null
 }
 
 type GadsRequestsByCampaignRow = {
@@ -317,9 +380,12 @@ type CreativeDetailedRow = {
   preview_image_url?: string | null
   thumbnail_url?: string | null
   permalink_url?: string | null
+  link_url?: string | null
+  media_image_src?: string | null
   campaign_name?: string | null
   ad_name?: string | null
   adset_name?: string | null
+  ad_id?: string | number | null
 }
 
 type GadsAssetGroupRow = {
@@ -409,8 +475,10 @@ type MetaAdsTopRow = {
 }
 
 type MetaCreativeFatigueRow = {
+  platform?: string | null
   creative_id?: string | number | null
   creative_name?: string | null
+  creative_type?: string | null
   creative_title?: string | null
   creative_body?: string | null
   link_url?: string | null
@@ -439,6 +507,26 @@ type MetaCreativeFatigueRow = {
   cvr_delta?: number | null
   cpl_delta?: number | null
   fatigue_flags?: number | null
+}
+
+type CreativePreviewEntry = {
+  previewImageUrl: string | null
+  permalinkUrl: string | null
+  creativeTitle: string | null
+}
+
+type CreativePreviewSource = {
+  creative_key?: string | number | null
+  creative_id?: string | number | null
+  creative_name?: string | null
+  creative_title?: string | null
+  ad_id?: string | number | null
+  ad_name?: string | null
+  preview_image_url?: string | null
+  thumbnail_url?: string | null
+  media_image_src?: string | null
+  permalink_url?: string | null
+  link_url?: string | null
 }
 
 type WidgetResponse<T> = {
@@ -501,6 +589,52 @@ const sanitizePreviewUrl = (value?: string | null) => {
   return null
 }
 
+const buildCreativePreviewKeys = (row: CreativePreviewSource) => {
+  const rawKeys = [
+    row.creative_key,
+    row.creative_id,
+    row.ad_id,
+    row.ad_name,
+    row.creative_title,
+    row.creative_name,
+  ]
+  return rawKeys
+    .map((value) => (value == null || value === "" ? null : String(value)))
+    .filter((value): value is string => Boolean(value))
+}
+
+const extractCreativePreview = (row: CreativePreviewSource): CreativePreviewEntry | null => {
+  const previewImageUrl =
+    row.preview_image_url ?? row.thumbnail_url ?? row.media_image_src ?? null
+  const permalinkUrl = row.permalink_url ?? row.link_url ?? null
+  const creativeTitle = normalizeLabel(row.creative_title ?? row.creative_name ?? row.ad_name ?? null)
+  if (!previewImageUrl && !permalinkUrl && !creativeTitle) return null
+  return { previewImageUrl, permalinkUrl, creativeTitle }
+}
+
+const upsertCreativePreview = (map: Map<string, CreativePreviewEntry>, row: CreativePreviewSource) => {
+  const keys = buildCreativePreviewKeys(row)
+  if (!keys.length) return
+  const entry = extractCreativePreview(row)
+  if (!entry) return
+  keys.forEach((key) => {
+    const existing = map.get(key) ?? { previewImageUrl: null, permalinkUrl: null, creativeTitle: null }
+    if (!existing.previewImageUrl && entry.previewImageUrl) existing.previewImageUrl = entry.previewImageUrl
+    if (!existing.permalinkUrl && entry.permalinkUrl) existing.permalinkUrl = entry.permalinkUrl
+    if (!existing.creativeTitle && entry.creativeTitle) existing.creativeTitle = entry.creativeTitle
+    map.set(key, existing)
+  })
+}
+
+const resolveCreativePreview = (map: Map<string, CreativePreviewEntry>, row: CreativePreviewSource) => {
+  const keys = buildCreativePreviewKeys(row)
+  for (const key of keys) {
+    const entry = map.get(key)
+    if (entry) return entry
+  }
+  return null
+}
+
 const buildEntityLabel = (name?: string | null, id?: string | number | null, fallback = "Item") => {
   const normalized = normalizeLabel(name)
   if (normalized && !isNumericLabel(normalized)) {
@@ -512,7 +646,7 @@ const buildEntityLabel = (name?: string | null, id?: string | number | null, fal
   return { title: fallback, meta: null }
 }
 
-const pickValue = <T,>(row: T, keys: Array<keyof T>) => {
+const pickValue = (row: Record<string, unknown>, keys: string[]) => {
   for (const key of keys) {
     const value = row[key]
     if (value !== null && value !== undefined && value !== "") {
@@ -641,6 +775,33 @@ const PreviewImage = ({
   )
 }
 
+const CampaignPreviewThumb = ({
+  src,
+  hasPreview,
+}: {
+  src?: string | null
+  hasPreview?: boolean
+}) => {
+  const [failed, setFailed] = useState(false)
+  const cleanSrc = sanitizePreviewUrl(src ?? null)
+  if (!cleanSrc || hasPreview === false || failed) {
+    return (
+      <Badge variant="outline" className="text-[10px]">
+        No preview
+      </Badge>
+    )
+  }
+  return (
+    <img
+      src={cleanSrc}
+      alt="Preview"
+      className="h-full w-full object-cover"
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 const buildAdsLibraryUrl = (adId?: string | number | null) =>
   adId ? `https://www.facebook.com/ads/library/?id=${adId}` : null
 
@@ -657,6 +818,33 @@ const resolveChannelLabel = (value?: string | null) => {
 }
 
 const toNumber = (value: unknown) => parseNumeric(value)
+
+const pickRowValue = (row: WidgetRow, keys: string[]) => {
+  for (const key of keys) {
+    const value = row[key]
+    if (value !== null && value !== undefined && value !== "") return value
+  }
+  return null
+}
+
+const metricNumber = (row: WidgetRow, keys: string[]) => {
+  const value = pickRowValue(row, keys)
+  return toNumber(value)
+}
+
+const normalizeGa4Platform = (value?: string | null) => {
+  const key = normalizeKey(value)
+  if (!key) return null
+  if (key.includes("facebook") || key.includes("instagram") || key.includes("meta")) return "meta"
+  if (key.includes("google")) return "gads"
+  return key
+}
+
+const isGa4PmaxRow = (row: WidgetRow) => {
+  const campaignType = normalizeKey(String(pickRowValue(row, ["campaign_type"]) ?? ""))
+  const networkType = normalizeKey(String(pickRowValue(row, ["ad_network_type"]) ?? ""))
+  return campaignType.includes("performancemax") || networkType.includes("crossnetwork")
+}
 
 const buildDateKey = (value: Date) => value.toISOString().slice(0, 10)
 
@@ -730,6 +918,8 @@ export default function AdsPageClient() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const searchKey = searchParams.toString()
+  const hasCityParam = useMemo(() => Boolean(searchParams.get("id_city") ?? searchParams.get("city_id")), [searchKey, searchParams])
+  const isDebug = useMemo(() => searchParams.get("debug") === "1", [searchKey, searchParams])
   const { cities } = useCities()
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const canFetch = isAuthenticated && !authLoading
@@ -738,12 +928,10 @@ export default function AdsPageClient() {
   const [draftFilters, setDraftFilters] = useState<AnalyticsFiltersValue>({
     dateRange: {},
     cityId: "all",
-    platform: "all",
   })
   const [appliedFilters, setAppliedFilters] = useState<AnalyticsFiltersValue>({
     dateRange: {},
     cityId: "all",
-    platform: "all",
   })
   const [compareMode, setCompareMode] = useState<CompareMode>("none")
   const [defaultsApplied, setDefaultsApplied] = useState(false)
@@ -759,11 +947,33 @@ export default function AdsPageClient() {
   const [channelMixRows, setChannelMixRows] = useState<ChannelMixRow[]>([])
   const [gadsKeywordDailyRows, setGadsKeywordDailyRows] = useState<GadsKeywordDailyRow[]>([])
   const [gadsSpendRows, setGadsSpendRows] = useState<GadsSpendRow[]>([])
+  const [gadsCampaignPreviewRows, setGadsCampaignPreviewRows] = useState<GadsCampaignPreviewRow[]>([])
   const [gadsRequestCampaignRows, setGadsRequestCampaignRows] = useState<GadsRequestsByCampaignRow[]>([])
   const [gadsLeadCampaignRows, setGadsLeadCampaignRows] = useState<GadsLeadsByCampaignRow[]>([])
   const [gadsDeviceRows, setGadsDeviceRows] = useState<GadsDeviceRow[]>([])
   const [gadsConversionRows, setGadsConversionRows] = useState<GadsConversionActionRow[]>([])
   const [gadsAssetGroupRows, setGadsAssetGroupRows] = useState<GadsAssetGroupRow[]>([])
+  const [metaRawCreativesRows, setMetaRawCreativesRows] = useState<WidgetRow[]>([])
+  const [metaRawDataQualityRows, setMetaRawDataQualityRows] = useState<WidgetRow[]>([])
+  const [metaRawFunnelRows, setMetaRawFunnelRows] = useState<WidgetRow[]>([])
+  const [metaRawBridgeRows, setMetaRawBridgeRows] = useState<WidgetRow[]>([])
+  const [metaRawMatchRows, setMetaRawMatchRows] = useState<WidgetRow[]>([])
+  const [ga4TrafficRows, setGa4TrafficRows] = useState<WidgetRow[]>([])
+  const [ga4EventsRows, setGa4EventsRows] = useState<WidgetRow[]>([])
+  const [ga4CreativeRows, setGa4CreativeRows] = useState<WidgetRow[]>([])
+  const [adsMetaFunnelRows, setAdsMetaFunnelRows] = useState<WidgetRow[]>([])
+  const [adsMetaLeadsRows, setAdsMetaLeadsRows] = useState<WidgetRow[]>([])
+  const [adsMetaQualityRows, setAdsMetaQualityRows] = useState<WidgetRow[]>([])
+  const [adsMetaMatchRows, setAdsMetaMatchRows] = useState<WidgetRow[]>([])
+  const [adsMetaCplByFormRows, setAdsMetaCplByFormRows] = useState<WidgetRow[]>([])
+  const [adsCreativePerformanceRows, setAdsCreativePerformanceRows] = useState<WidgetRow[]>([])
+  const [adsCreativeFatigueRows, setAdsCreativeFatigueRows] = useState<WidgetRow[]>([])
+  const [adsGadsTopKeywordsRows, setAdsGadsTopKeywordsRows] = useState<WidgetRow[]>([])
+  const [metaRawMissing, setMetaRawMissing] = useState<Record<string, boolean>>({})
+  const [adsSummaryMissing, setAdsSummaryMissing] = useState<Record<string, boolean>>({})
+  const [adsMetaMissing, setAdsMetaMissing] = useState<Record<string, boolean>>({})
+  const [adsCreativeMissing, setAdsCreativeMissing] = useState<Record<string, boolean>>({})
+  const [adsGadsMissing, setAdsGadsMissing] = useState<Record<string, boolean>>({})
   const [compareRows, setCompareRows] = useState<AdsDailyRow[]>([])
   const [adsKpiRows, setAdsKpiRows] = useState<AdsKpiRow[]>([])
   const [creativeTypeRows, setCreativeTypeRows] = useState<CreativeTypeRow[]>([])
@@ -775,9 +985,9 @@ export default function AdsPageClient() {
   const [isLoadingMetaAdsTop, setIsLoadingMetaAdsTop] = useState(false)
   const [isLoadingMetaFatigue, setIsLoadingMetaFatigue] = useState(false)
   const [isLoadingMetaCampaignProduct, setIsLoadingMetaCampaignProduct] = useState(false)
-  const [isLoadingCreativeDetailed, setIsLoadingCreativeDetailed] = useState(false)
   const [isLoadingChannelMix, setIsLoadingChannelMix] = useState(false)
   const [isLoadingGadsSpend, setIsLoadingGadsSpend] = useState(false)
+  const [isLoadingGadsCampaignPreviews, setIsLoadingGadsCampaignPreviews] = useState(false)
   const [isLoadingGadsRequests, setIsLoadingGadsRequests] = useState(false)
   const [isLoadingGadsLeads, setIsLoadingGadsLeads] = useState(false)
   const [isLoadingGadsKeywordsDaily, setIsLoadingGadsKeywordsDaily] = useState(false)
@@ -787,6 +997,10 @@ export default function AdsPageClient() {
   const [isLoadingCompare, setIsLoadingCompare] = useState(false)
   const [isLoadingKpi, setIsLoadingKpi] = useState(false)
   const [isLoadingCreativeTypes, setIsLoadingCreativeTypes] = useState(false)
+  const [isLoadingSummaryExtras, setIsLoadingSummaryExtras] = useState(false)
+  const [isLoadingMetaExtras, setIsLoadingMetaExtras] = useState(false)
+  const [isLoadingCreativeExtras, setIsLoadingCreativeExtras] = useState(false)
+  const [isLoadingGadsTopKeywords, setIsLoadingGadsTopKeywords] = useState(false)
 
   const [copiedId, setCopiedId] = useState<string | number | null>(null)
   const [channelMixMissing, setChannelMixMissing] = useState(false)
@@ -794,8 +1008,8 @@ export default function AdsPageClient() {
   const [metaAdsTopMissing, setMetaAdsTopMissing] = useState(false)
   const [metaFatigueMissing, setMetaFatigueMissing] = useState(false)
   const [metaCampaignProductMissing, setMetaCampaignProductMissing] = useState(false)
-  const [creativeDetailedMissing, setCreativeDetailedMissing] = useState(false)
   const [keywordsDailyMissing, setKeywordsDailyMissing] = useState(false)
+  const [gadsCampaignPreviewsMissing, setGadsCampaignPreviewsMissing] = useState(false)
   const [gadsRequestsMissing, setGadsRequestsMissing] = useState(false)
   const [gadsLeadsMissing, setGadsLeadsMissing] = useState(false)
   const [devicesMissing, setDevicesMissing] = useState(false)
@@ -807,7 +1021,6 @@ export default function AdsPageClient() {
   const [showAllFatigue, setShowAllFatigue] = useState(false)
   const [showAllTopCreatives, setShowAllTopCreatives] = useState(false)
   const [showAllMetaCampaignProduct, setShowAllMetaCampaignProduct] = useState(false)
-  const [showAllCreativeDetailed, setShowAllCreativeDetailed] = useState(false)
   const [showAllKeywordDaily, setShowAllKeywordDaily] = useState(false)
   const [showAllGadsDemandRows, setShowAllGadsDemandRows] = useState(false)
   const [showAllDeviceRows, setShowAllDeviceRows] = useState(false)
@@ -822,7 +1035,8 @@ export default function AdsPageClient() {
   useEffect(() => {
     const tab = searchParams.get("tab")
     const allowedTabs = new Set([TAB_SUMMARY, TAB_META, TAB_GADS, TAB_CREATIVES, TAB_PMAX])
-    const nextTab = tab && allowedTabs.has(tab) ? tab : TAB_SUMMARY
+    const rawTab = tab && allowedTabs.has(tab) ? tab : TAB_SUMMARY
+    const nextTab = rawTab === TAB_CREATIVES ? TAB_META : rawTab
     const compareParam = searchParams.get("compare")
     const nextCompare: CompareMode = compareParam === "wow" ? "wow" : compareParam === "mom" ? "mom" : "none"
     const cityParam = searchParams.get("id_city") ?? searchParams.get("city_id")
@@ -832,13 +1046,23 @@ export default function AdsPageClient() {
         to: parseDateParam(searchParams.get("date_to")),
       },
       cityId: cityParam ?? "all",
-      platform: "all",
     }
     setActiveTab(nextTab)
     setDraftFilters(nextFilters)
     setAppliedFilters(nextFilters)
     setCompareMode(nextCompare)
   }, [searchKey, searchParams])
+
+  useEffect(() => {
+    if (!canFetch) return
+    if (hasCityParam) return
+    const cityId = resolveDefaultCityId(cities)
+    if (!cityId) return
+    const nextCity = String(cityId)
+    setDraftFilters((prev) => ({ ...prev, cityId: nextCity }))
+    setAppliedFilters((prev) => ({ ...prev, cityId: nextCity }))
+    updateQuery({ id_city: nextCity })
+  }, [canFetch, cities, hasCityParam])
 
   useEffect(() => {
     if (!canFetch) return
@@ -861,7 +1085,6 @@ export default function AdsPageClient() {
         const nextFilters: AnalyticsFiltersValue = {
           dateRange,
           cityId: draftFilters.cityId,
-          platform: draftFilters.platform,
         }
         setDraftFilters(nextFilters)
         setAppliedFilters(nextFilters)
@@ -873,7 +1096,7 @@ export default function AdsPageClient() {
     return () => {
       active = false
     }
-  }, [activeTab, defaultsApplied, draftFilters.cityId, draftFilters.platform, searchParams, canFetch])
+  }, [activeTab, defaultsApplied, draftFilters.cityId, searchParams, canFetch])
 
   const updateQuery = (updates: Record<string, string | null | undefined>) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -890,7 +1113,7 @@ export default function AdsPageClient() {
 
   const applyFilters = () => {
     if (!draftFilters.dateRange.from || !draftFilters.dateRange.to) {
-      setDateError("Оберіть період для фільтрів.")
+      setDateError("Select a date range to apply filters.")
       return
     }
     setDateError(null)
@@ -904,7 +1127,9 @@ export default function AdsPageClient() {
   }
 
   const resetFilters = () => {
-    const resetValue: AnalyticsFiltersValue = { dateRange: {}, cityId: "all", platform: "all" }
+    const cityId = resolveDefaultCityId(cities)
+    const nextCity = cityId ? String(cityId) : "all"
+    const resetValue: AnalyticsFiltersValue = { dateRange: {}, cityId: nextCity }
     setDraftFilters(resetValue)
     setAppliedFilters(resetValue)
     setCompareMode("none")
@@ -913,12 +1138,12 @@ export default function AdsPageClient() {
       date_from: null,
       date_to: null,
       compare: null,
-      id_city: null,
+      id_city: nextCity,
     })
   }
 
   const handleTabChange = (value: string) => {
-    const allowedTabs = new Set([TAB_SUMMARY, TAB_META, TAB_GADS, TAB_CREATIVES, TAB_PMAX])
+    const allowedTabs = new Set([TAB_SUMMARY, TAB_META, TAB_GADS, TAB_PMAX])
     const nextTab = allowedTabs.has(value) ? value : TAB_SUMMARY
     setActiveTab(nextTab)
     updateQuery({ tab: nextTab })
@@ -967,8 +1192,8 @@ export default function AdsPageClient() {
   const metaParams = useMemo(() => ({ ...baseParams, platform: "meta" }), [baseParams])
   const gadsParams = useMemo(() => ({ ...baseParams }), [baseParams])
   const channelParams = useMemo(() => ({ ...baseParams }), [baseParams])
-  const shouldLoadMeta = useMemo(() => activeTab !== TAB_GADS, [activeTab])
-  const shouldLoadGads = useMemo(() => activeTab !== TAB_META, [activeTab])
+  const shouldLoadMeta = useMemo(() => activeTab === TAB_SUMMARY || activeTab === TAB_META, [activeTab])
+  const shouldLoadGads = useMemo(() => activeTab === TAB_SUMMARY || activeTab === TAB_GADS || activeTab === TAB_PMAX, [activeTab])
   const shouldLoadSummary = activeTab === TAB_SUMMARY
 
   const compareParams = useMemo(() => {
@@ -1037,16 +1262,33 @@ export default function AdsPageClient() {
           widget_key: "ads.meta_ads_top_daily",
           filters: resolveWidgetFilters("ads.meta_ads_top_daily", { platform: "meta" }),
           limit: showAllTopMeta ? 200 : 50,
-        }
+        },
+        { widget_key: "ga4.traffic_overview_daily", limit: 300 },
+        { widget_key: "ga4.events_conversions_daily", order_by: "-conversions", limit: 300 }
       )
     }
 
-    if (activeTab === TAB_META) {
+    if (activeTab === TAB_META && false) {
       widgets.push(
         {
           widget_key: "ads.meta_ads_top_daily",
           filters: resolveWidgetFilters("ads.meta_ads_top_daily", { platform: "meta" }),
           limit: showAllTopMeta ? 200 : 50,
+        },
+        {
+          widget_key: "ads.creative_type_summary",
+          filters: resolveWidgetFilters("ads.creative_type_summary", { platform: "meta" }),
+        },
+        {
+          widget_key: "ads.creatives_detailed",
+          filters: resolveWidgetFilters("ads.creatives_detailed", { platform: "meta" }),
+          order_by: "-spend",
+          limit: showAllTopCreatives ? 200 : 50,
+        },
+        {
+          widget_key: "ads.ads_ad_profile_daily",
+          filters: resolveWidgetFilters("ads.ads_ad_profile_daily", { platform: "meta" }),
+          limit: showAllTopCreatives ? 200 : 50,
         },
         {
           widget_key: "ads.meta_campaigns_by_product",
@@ -1063,18 +1305,35 @@ export default function AdsPageClient() {
           widget_key: "ads.meta_creatives_daily",
           filters: resolveWidgetFilters("ads.meta_creatives_daily", { platform: "meta" }),
           limit: showAllTopCreatives ? 200 : 50,
-        }
+        },
+        { widget_key: "ads.meta_funnel_daily", filters: resolveWidgetFilters("ads.meta_funnel_daily", { platform: "meta" }) },
+        { widget_key: "ads.meta_leads_daily", filters: resolveWidgetFilters("ads.meta_leads_daily", { platform: "meta" }) },
+        { widget_key: "ads.meta_data_quality_daily", filters: resolveWidgetFilters("ads.meta_data_quality_daily", { platform: "meta" }) },
+        { widget_key: "ads.meta_leads_match_quality_daily", filters: resolveWidgetFilters("ads.meta_leads_match_quality_daily", { platform: "meta" }) },
+        { widget_key: "ads.meta_cpl_by_form_daily", filters: resolveWidgetFilters("ads.meta_cpl_by_form_daily", { platform: "meta" }) },
+        { widget_key: "meta.creatives_daily", filters: resolveWidgetFilters("meta.creatives_daily", {}) },
+        { widget_key: "meta.data_quality_daily", filters: resolveWidgetFilters("meta.data_quality_daily", {}) },
+        { widget_key: "meta.funnel_daily", filters: resolveWidgetFilters("meta.funnel_daily", {}) },
+        { widget_key: "meta.lead_to_crm_bridge", filters: resolveWidgetFilters("meta.lead_to_crm_bridge", {}) },
+        { widget_key: "meta.leads_match_quality_daily", filters: resolveWidgetFilters("meta.leads_match_quality_daily", {}) }
       )
     }
 
-    if (activeTab === TAB_CREATIVES) {
+    if (activeTab === TAB_META) {
       widgets.push(
+        {
+          widget_key: "ads.meta_ads_top_daily",
+          filters: resolveWidgetFilters("ads.meta_ads_top_daily", { platform: "meta" }),
+          limit: showAllTopMeta ? 200 : 50,
+        },
         { widget_key: "ads.creative_type_summary", filters: resolveWidgetFilters("ads.creative_type_summary", {}) },
+        { widget_key: "ads.creative_performance_daily", filters: resolveWidgetFilters("ads.creative_performance_daily", {}) },
+        { widget_key: "ads.creative_fatigue_daily", filters: resolveWidgetFilters("ads.creative_fatigue_daily", {}) },
         {
           widget_key: "ads.creatives_detailed",
           filters: resolveWidgetFilters("ads.creatives_detailed", {}),
           order_by: "-spend",
-          limit: showAllCreativeDetailed ? 200 : 50,
+          limit: showAllTopCreatives ? 200 : 50,
         },
         {
           widget_key: "ads.meta_creatives_daily",
@@ -1090,7 +1349,9 @@ export default function AdsPageClient() {
           widget_key: "ads.meta_creative_fatigue_7d",
           filters: resolveWidgetFilters("ads.meta_creative_fatigue_7d", { platform: "meta" }),
           limit: showAllFatigue ? 200 : 50,
-        }
+        },
+        { widget_key: "ga4.ads_creative_performance_daily", order_by: "-spend", limit: 300 },
+        { widget_key: "ga4.events_conversions_daily", order_by: "-conversions", limit: 300 }
       )
     }
 
@@ -1101,6 +1362,18 @@ export default function AdsPageClient() {
           filters: resolveWidgetFilters("ads.gads_keywords_daily", {}),
           order_by: "-spend",
           limit: showAllKeywordDaily ? 200 : 50,
+        },
+        {
+          widget_key: "ads.gads.top_keywords",
+          filters: resolveWidgetFilters("ads.gads.top_keywords", {}),
+          order_by: "-spend",
+          limit: showAllKeywordDaily ? 200 : 50,
+        },
+        {
+          widget_key: "ads.gads_campaign_previews_daily",
+          filters: resolveWidgetFilters("ads.gads_campaign_previews_daily", {}),
+          order_by: "-spend",
+          limit: 100,
         },
         {
           widget_key: "ads.gads_requests_by_campaign_daily",
@@ -1126,14 +1399,17 @@ export default function AdsPageClient() {
           order_by: "-conversions",
           limit: showAllConversionRows ? 200 : 50,
         },
-        { widget_key: "ads.gads.trend", filters: resolveWidgetFilters("ads.gads.trend", {}) }
+        { widget_key: "ads.gads.trend", filters: resolveWidgetFilters("ads.gads.trend", {}) },
+        { widget_key: "ga4.ads_creative_performance_daily", order_by: "-spend", limit: 300 },
+        { widget_key: "ga4.events_conversions_daily", order_by: "-conversions", limit: 300 }
       )
     }
 
     if (activeTab === TAB_PMAX) {
       widgets.push(
         { widget_key: "ads.gads_pmax_daily", filters: resolveWidgetFilters("ads.gads_pmax_daily", {}) },
-        { widget_key: "ads.gads.trend", filters: resolveWidgetFilters("ads.gads.trend", {}) }
+        { widget_key: "ads.gads.trend", filters: resolveWidgetFilters("ads.gads.trend", {}) },
+        { widget_key: "ga4.ads_creative_performance_daily", order_by: "-spend", limit: 300 }
       )
     }
 
@@ -1153,7 +1429,6 @@ export default function AdsPageClient() {
     showAllTopCreatives,
     showAllTopMeta,
     showAllMetaCampaignProduct,
-    showAllCreativeDetailed,
     useBatch,
     widgetFilters,
   ])
@@ -1181,14 +1456,25 @@ export default function AdsPageClient() {
       markLoading("ads.meta_campaigns_by_product", setIsLoadingMetaCampaignProduct)
       markLoading("ads.meta_creative_fatigue_7d", setIsLoadingMetaFatigue)
       markLoading("ads.channel_mix_daily", setIsLoadingChannelMix)
+      markLoading("ga4.traffic_overview_daily", setIsLoadingSummaryExtras)
+      markLoading("ga4.events_conversions_daily", setIsLoadingSummaryExtras)
+      markLoading("ga4.ads_creative_performance_daily", setIsLoadingCreativeExtras)
+      markLoading("ads.meta_funnel_daily", setIsLoadingMetaExtras)
+      markLoading("ads.meta_leads_daily", setIsLoadingMetaExtras)
+      markLoading("ads.meta_data_quality_daily", setIsLoadingMetaExtras)
+      markLoading("ads.meta_leads_match_quality_daily", setIsLoadingMetaExtras)
+      markLoading("ads.meta_cpl_by_form_daily", setIsLoadingMetaExtras)
+      markLoading("ads.creative_performance_daily", setIsLoadingCreativeExtras)
+      markLoading("ads.creative_fatigue_daily", setIsLoadingCreativeExtras)
       markLoading("ads.gads_requests_by_campaign_daily", setIsLoadingGadsRequests)
       markLoading("ads.gads_leads_by_campaign_daily", setIsLoadingGadsLeads)
       markLoading("ads.gads_keywords_daily", setIsLoadingGadsKeywordsDaily)
+      markLoading("ads.gads.top_keywords", setIsLoadingGadsTopKeywords)
+      markLoading("ads.gads_campaign_previews_daily", setIsLoadingGadsCampaignPreviews)
       markLoading("ads.gads_device_hour_daily", setIsLoadingGadsDevices)
       markLoading("ads.gads_conversion_actions_daily", setIsLoadingGadsConversions)
       markLoading("ads.gads.trend", setIsLoadingGadsSpend)
       markLoading("ads.gads_pmax_daily", setIsLoadingGadsPmax)
-      markLoading("ads.creatives_detailed", setIsLoadingCreativeDetailed)
 
       try {
         const response = await fetchWidgetsBatch(batchPayload)
@@ -1233,13 +1519,22 @@ export default function AdsPageClient() {
           setMetaFatigueMissing(Boolean(items["ads.meta_creative_fatigue_7d"].missing_view))
           setMetaFatigueRows(getItems("ads.meta_creative_fatigue_7d") as MetaCreativeFatigueRow[])
         }
-        if (items["ads.creatives_detailed"]) {
-          setCreativeDetailedMissing(Boolean(items["ads.creatives_detailed"].missing_view))
-          setCreativeDetailedRows(getItems("ads.creatives_detailed") as CreativeDetailedRow[])
-        }
+        if (items["ads.creatives_detailed"]) setCreativeDetailedRows(getItems("ads.creatives_detailed") as CreativeDetailedRow[])
         if (items["ads.channel_mix_daily"]) {
           setChannelMixMissing(Boolean(items["ads.channel_mix_daily"].missing_view))
           setChannelMixRows(getItems("ads.channel_mix_daily") as ChannelMixRow[])
+        }
+        if (items["ga4.traffic_overview_daily"]) {
+          setGa4TrafficRows(getItems("ga4.traffic_overview_daily"))
+          setAdsSummaryMissing((prev) => ({ ...prev, ga4_traffic: Boolean(items["ga4.traffic_overview_daily"].missing_view) }))
+        }
+        if (items["ga4.events_conversions_daily"]) {
+          setGa4EventsRows(getItems("ga4.events_conversions_daily"))
+          setAdsSummaryMissing((prev) => ({ ...prev, ga4_events: Boolean(items["ga4.events_conversions_daily"].missing_view) }))
+        }
+        if (items["ga4.ads_creative_performance_daily"]) {
+          setGa4CreativeRows(getItems("ga4.ads_creative_performance_daily"))
+          setAdsSummaryMissing((prev) => ({ ...prev, ga4_creatives: Boolean(items["ga4.ads_creative_performance_daily"].missing_view) }))
         }
         if (items["ads.gads_requests_by_campaign_daily"]) {
           setGadsRequestsMissing(Boolean(items["ads.gads_requests_by_campaign_daily"].missing_view))
@@ -1253,6 +1548,14 @@ export default function AdsPageClient() {
           setKeywordsDailyMissing(Boolean(items["ads.gads_keywords_daily"].missing_view))
           setGadsKeywordDailyRows(getItems("ads.gads_keywords_daily") as GadsKeywordDailyRow[])
         }
+        if (items["ads.gads.top_keywords"]) {
+          setAdsGadsTopKeywordsRows(getItems("ads.gads.top_keywords"))
+          setAdsGadsMissing((prev) => ({ ...prev, top_keywords: Boolean(items["ads.gads.top_keywords"].missing_view) }))
+        }
+        if (items["ads.gads_campaign_previews_daily"]) {
+          setGadsCampaignPreviewsMissing(Boolean(items["ads.gads_campaign_previews_daily"].missing_view))
+          setGadsCampaignPreviewRows(getItems("ads.gads_campaign_previews_daily") as GadsCampaignPreviewRow[])
+        }
         if (items["ads.gads_device_hour_daily"]) {
           setDevicesMissing(Boolean(items["ads.gads_device_hour_daily"].missing_view))
           setGadsDeviceRows(getItems("ads.gads_device_hour_daily") as GadsDeviceRow[])
@@ -1263,6 +1566,54 @@ export default function AdsPageClient() {
         }
         if (items["ads.gads.trend"]) setGadsSpendRows(getItems("ads.gads.trend") as GadsSpendRow[])
         if (items["ads.gads_pmax_daily"]) setGadsAssetGroupRows(getItems("ads.gads_pmax_daily") as GadsAssetGroupRow[])
+        if (items["meta.creatives_daily"]) {
+          setMetaRawCreativesRows(getItems("meta.creatives_daily"))
+          setMetaRawMissing((prev) => ({ ...prev, creatives: Boolean(items["meta.creatives_daily"].missing_view) }))
+        }
+        if (items["meta.data_quality_daily"]) {
+          setMetaRawDataQualityRows(getItems("meta.data_quality_daily"))
+          setMetaRawMissing((prev) => ({ ...prev, quality: Boolean(items["meta.data_quality_daily"].missing_view) }))
+        }
+        if (items["meta.funnel_daily"]) {
+          setMetaRawFunnelRows(getItems("meta.funnel_daily"))
+          setMetaRawMissing((prev) => ({ ...prev, funnel: Boolean(items["meta.funnel_daily"].missing_view) }))
+        }
+        if (items["meta.lead_to_crm_bridge"]) {
+          setMetaRawBridgeRows(getItems("meta.lead_to_crm_bridge"))
+          setMetaRawMissing((prev) => ({ ...prev, bridge: Boolean(items["meta.lead_to_crm_bridge"].missing_view) }))
+        }
+        if (items["meta.leads_match_quality_daily"]) {
+          setMetaRawMatchRows(getItems("meta.leads_match_quality_daily"))
+          setMetaRawMissing((prev) => ({ ...prev, match: Boolean(items["meta.leads_match_quality_daily"].missing_view) }))
+        }
+        if (items["ads.meta_funnel_daily"]) {
+          setAdsMetaFunnelRows(getItems("ads.meta_funnel_daily"))
+          setAdsMetaMissing((prev) => ({ ...prev, funnel: Boolean(items["ads.meta_funnel_daily"].missing_view) }))
+        }
+        if (items["ads.meta_leads_daily"]) {
+          setAdsMetaLeadsRows(getItems("ads.meta_leads_daily"))
+          setAdsMetaMissing((prev) => ({ ...prev, leads: Boolean(items["ads.meta_leads_daily"].missing_view) }))
+        }
+        if (items["ads.meta_data_quality_daily"]) {
+          setAdsMetaQualityRows(getItems("ads.meta_data_quality_daily"))
+          setAdsMetaMissing((prev) => ({ ...prev, quality: Boolean(items["ads.meta_data_quality_daily"].missing_view) }))
+        }
+        if (items["ads.meta_leads_match_quality_daily"]) {
+          setAdsMetaMatchRows(getItems("ads.meta_leads_match_quality_daily"))
+          setAdsMetaMissing((prev) => ({ ...prev, match: Boolean(items["ads.meta_leads_match_quality_daily"].missing_view) }))
+        }
+        if (items["ads.meta_cpl_by_form_daily"]) {
+          setAdsMetaCplByFormRows(getItems("ads.meta_cpl_by_form_daily"))
+          setAdsMetaMissing((prev) => ({ ...prev, cpl_by_form: Boolean(items["ads.meta_cpl_by_form_daily"].missing_view) }))
+        }
+        if (items["ads.creative_performance_daily"]) {
+          setAdsCreativePerformanceRows(getItems("ads.creative_performance_daily"))
+          setAdsCreativeMissing((prev) => ({ ...prev, performance: Boolean(items["ads.creative_performance_daily"].missing_view) }))
+        }
+        if (items["ads.creative_fatigue_daily"]) {
+          setAdsCreativeFatigueRows(getItems("ads.creative_fatigue_daily"))
+          setAdsCreativeMissing((prev) => ({ ...prev, fatigue: Boolean(items["ads.creative_fatigue_daily"].missing_view) }))
+        }
       } catch (error) {
         if (!active) return
         console.error("Failed to load batch widgets:", error)
@@ -1778,7 +2129,12 @@ export default function AdsPageClient() {
     }
   }, [gadsParams, canFetch, shouldLoadGads])
 
-  const tabPlatform = activeTab === TAB_META ? "meta" : activeTab === TAB_GADS ? "gads" : null
+  const tabPlatform =
+    activeTab === TAB_META
+      ? "meta"
+      : activeTab === TAB_GADS || activeTab === TAB_PMAX
+        ? "gads"
+        : null
 
   const dailyRowsForTab = useMemo(() => {
     if (!tabPlatform) return adsDailyRows
@@ -1794,6 +2150,13 @@ export default function AdsPageClient() {
     if (!tabPlatform) return adsKpiRows
     return adsKpiRows.filter((row) => normalizeKey(row.platform) === tabPlatform)
   }, [adsKpiRows, tabPlatform])
+
+  const kpiParsed = useMemo(() => {
+    return parseWidgetRowsSafe(
+      kpiRowsForTab.map((row) => camelizeUnknownRecordShallow(row as unknown as WidgetRow)),
+      adsKpiTotalRowSchema
+    )
+  }, [kpiRowsForTab])
 
   const currencyCode = useMemo(() => {
     const pick = <T extends { currency_code?: string | null }>(rows: T[]) =>
@@ -1828,12 +2191,6 @@ export default function AdsPageClient() {
     formatCurrency(value ?? null, { currencyCode: currencyCode ?? undefined })
 
   const kpiTrendData = useMemo(() => {
-    const sourceRows = kpiRowsForTab.length > 0 ? kpiRowsForTab : dailyRowsForTab
-    const crmRows =
-      sourceRows.some((row) => (row as { crm_requests_cnt?: number | null }).crm_requests_cnt != null) ||
-      dailyRowsForTab.length === 0
-        ? sourceRows
-        : dailyRowsForTab
     const bucket = new Map<
       string,
       {
@@ -1842,12 +2199,49 @@ export default function AdsPageClient() {
         clicks: number
         platformLeads: number
         crmRequests: number
+        contracts: number
+        revenue: number
+        payments: number
         impressions: number
         conversionValue: number
       }
     >()
 
-    sourceRows.forEach((row) => {
+    if (kpiParsed.items.length > 0) {
+      kpiParsed.items.forEach((row) => {
+        const date = String(row.dateKey ?? row.dayKey ?? "")
+        if (!date) return
+        const entry =
+          bucket.get(date) ??
+          {
+            date,
+            spend: 0,
+            clicks: 0,
+            platformLeads: 0,
+            crmRequests: 0,
+            contracts: 0,
+            revenue: 0,
+            payments: 0,
+            impressions: 0,
+            conversionValue: 0,
+          }
+        entry.spend += row.spend ?? 0
+        entry.clicks += row.clicks ?? 0
+        const platformLeads = row.platformLeads ?? row.conversions ?? 0
+        entry.platformLeads += platformLeads
+        entry.crmRequests += row.crmRequestsCnt ?? 0
+        entry.contracts += row.contractsCnt ?? 0
+        entry.revenue += row.revenueSum ?? row.revenueTotalCost ?? 0
+        entry.payments += row.paymentsSum ?? row.paidSum ?? 0
+        entry.impressions += row.impressions ?? 0
+        entry.conversionValue += row.conversionValue ?? 0
+        bucket.set(date, entry)
+      })
+      return Array.from(bucket.values()).sort((a, b) => a.date.localeCompare(b.date))
+    }
+
+    // Fallback: if KPI view is missing, build a basic trend from ads_daily.
+    dailyRowsForTab.forEach((row) => {
       const date = resolveDateKey(row as { date_key?: string | null; dateKey?: string | null })
       if (!date) return
       const entry =
@@ -1858,41 +2252,22 @@ export default function AdsPageClient() {
           clicks: 0,
           platformLeads: 0,
           crmRequests: 0,
+          contracts: 0,
+          revenue: 0,
+          payments: 0,
           impressions: 0,
           conversionValue: 0,
         }
       entry.spend += toNumber((row as { spend?: number | null }).spend) ?? 0
       entry.clicks += toNumber((row as { clicks?: number | null }).clicks) ?? 0
-      const platformLeads =
-        toNumber((row as { platform_leads?: number | null }).platform_leads) ??
-        toNumber((row as { conversions?: number | null }).conversions) ??
-        0
+      const platformLeads = toNumber((row as { conversions?: number | null }).conversions) ?? 0
       entry.platformLeads += platformLeads
       entry.impressions += toNumber((row as { impressions?: number | null }).impressions) ?? 0
-      entry.conversionValue += toNumber((row as { conversion_value?: number | null }).conversion_value) ?? 0
       bucket.set(date, entry)
     })
 
-    if (crmRows !== sourceRows) {
-      crmRows.forEach((row) => {
-        const date = resolveDateKey(row as { date_key?: string | null; dateKey?: string | null })
-        if (!date) return
-        const entry = bucket.get(date)
-        if (!entry) return
-        entry.crmRequests += toNumber((row as { crm_requests_cnt?: number | null }).crm_requests_cnt) ?? 0
-      })
-    } else {
-      sourceRows.forEach((row) => {
-        const date = resolveDateKey(row as { date_key?: string | null; dateKey?: string | null })
-        if (!date) return
-        const entry = bucket.get(date)
-        if (!entry) return
-        entry.crmRequests += toNumber((row as { crm_requests_cnt?: number | null }).crm_requests_cnt) ?? 0
-      })
-    }
-
     return Array.from(bucket.values()).sort((a, b) => a.date.localeCompare(b.date))
-  }, [dailyRowsForTab, kpiRowsForTab])
+  }, [dailyRowsForTab, kpiParsed.items])
 
   const filteredAnomalies = useMemo(() => {
     const rows = anomalyRows.filter(
@@ -1910,46 +2285,87 @@ export default function AdsPageClient() {
   }, [anomalyRows])
 
   const totals = useMemo(() => {
-    const sourceRows = kpiRowsForTab.length > 0 ? kpiRowsForTab : dailyRowsForTab
-    const baseTotals = sourceRows.reduce(
+    if (kpiParsed.items.length > 0) {
+      return kpiParsed.items.reduce<TotalsAccumulator>(
+        (acc, row) => {
+          acc.spend += row.spend ?? 0
+          acc.clicks += row.clicks ?? 0
+          acc.impressions += row.impressions ?? 0
+          const platformLeads = row.platformLeads ?? row.conversions ?? 0
+          acc.conversions += platformLeads
+          acc.platformLeads += platformLeads
+          acc.crmRequests += row.crmRequestsCnt ?? 0
+          acc.contracts += row.contractsCnt ?? 0
+          acc.revenue += row.revenueSum ?? row.revenueTotalCost ?? 0
+          acc.payments += row.paymentsSum ?? row.paidSum ?? 0
+          acc.conversionValue += row.conversionValue ?? 0
+          return acc
+        },
+        {
+          spend: 0,
+          clicks: 0,
+          impressions: 0,
+          conversions: 0,
+          platformLeads: 0,
+          crmRequests: 0,
+          contracts: 0,
+          revenue: 0,
+          payments: 0,
+          conversionValue: 0,
+        }
+      )
+    }
+
+    // Fallback totals from daily (platform only).
+    return dailyRowsForTab.reduce<TotalsAccumulator>(
       (acc, row) => {
         acc.spend += toNumber((row as { spend?: number | null }).spend) ?? 0
         acc.clicks += toNumber((row as { clicks?: number | null }).clicks) ?? 0
-        const platformLeads =
-          toNumber((row as { platform_leads?: number | null }).platform_leads) ??
-          toNumber((row as { conversions?: number | null }).conversions) ??
-          0
+        const platformLeads = toNumber((row as { conversions?: number | null }).conversions) ?? 0
         acc.conversions += platformLeads
         acc.platformLeads += platformLeads
         acc.impressions += toNumber((row as { impressions?: number | null }).impressions) ?? 0
-        acc.conversionValue += toNumber((row as { conversion_value?: number | null }).conversion_value) ?? 0
         return acc
       },
-      { spend: 0, clicks: 0, conversions: 0, platformLeads: 0, crmRequests: 0, impressions: 0, conversionValue: 0 }
+      {
+        spend: 0,
+        clicks: 0,
+        impressions: 0,
+        conversions: 0,
+        platformLeads: 0,
+        crmRequests: 0,
+        contracts: 0,
+        revenue: 0,
+        payments: 0,
+        conversionValue: 0,
+      }
     )
-
-    const crmSource =
-      sourceRows.some((row) => (row as { crm_requests_cnt?: number | null }).crm_requests_cnt != null) ||
-      dailyRowsForTab.length === 0
-        ? sourceRows
-        : dailyRowsForTab
-    const crmRequests = crmSource.reduce(
-      (sum, row) => sum + (toNumber((row as { crm_requests_cnt?: number | null }).crm_requests_cnt) ?? 0),
-      0
-    )
-    return { ...baseTotals, crmRequests }
-  }, [dailyRowsForTab, kpiRowsForTab])
+  }, [dailyRowsForTab, kpiParsed.items])
 
   const hasCrmLeadsData = useMemo(() => {
-    const hasInKpi = kpiRowsForTab.some((row) => row.crm_requests_cnt != null)
+    if (kpiParsed.items.length > 0) {
+      return kpiParsed.items.some((row) => row.crmRequestsCnt != null && row.crmRequestsCnt > 0)
+    }
     const hasInDaily = dailyRowsForTab.some((row) => (row as { crm_requests_cnt?: number | null }).crm_requests_cnt != null)
-    return hasInKpi || hasInDaily
-  }, [dailyRowsForTab, kpiRowsForTab])
+    return hasInDaily
+  }, [dailyRowsForTab, kpiParsed.items])
+
+  const hasCrmOutcomesData = useMemo(() => {
+    if (kpiParsed.items.length > 0) {
+      return kpiParsed.items.some(
+        (row) =>
+          (row.contractsCnt ?? 0) > 0 ||
+          (row.revenueSum ?? row.revenueTotalCost ?? 0) > 0 ||
+          (row.paymentsSum ?? row.paidSum ?? 0) > 0
+      )
+    }
+    return false
+  }, [kpiParsed.items])
 
   const platformLeadsIsFractional = totals.platformLeads != null && Math.abs(totals.platformLeads % 1) > 0.001
 
   const compareTotals = useMemo(() => {
-    return compareRowsForTab.reduce(
+    return compareRowsForTab.reduce<TotalsAccumulator>(
       (acc, row) => {
         acc.spend += toNumber(row.spend) ?? 0
         acc.clicks += toNumber(row.clicks) ?? 0
@@ -1963,15 +2379,22 @@ export default function AdsPageClient() {
         acc.conversionValue += toNumber((row as { conversion_value?: number | null }).conversion_value) ?? 0
         return acc
       },
-      { spend: 0, clicks: 0, conversions: 0, platformLeads: 0, impressions: 0, conversionValue: 0 }
+      {
+        spend: 0,
+        clicks: 0,
+        impressions: 0,
+        conversions: 0,
+        platformLeads: 0,
+        crmRequests: 0,
+        contracts: 0,
+        revenue: 0,
+        payments: 0,
+        conversionValue: 0,
+      }
     )
   }, [compareRowsForTab])
 
-  const roasBase = totals.conversionValue > 0 ? totals.conversionValue : totals.platformLeads
-  const dailyRoas = totals.spend > 0 ? roasBase / totals.spend : null
-  const compareRoasBase =
-    compareTotals.conversionValue > 0 ? compareTotals.conversionValue : compareTotals.platformLeads
-  const compareRoas = compareTotals.spend > 0 ? compareRoasBase / compareTotals.spend : null
+  const dailyRoas = totals.spend > 0 ? totals.revenue / totals.spend : null
   const totalCtr = totals.impressions > 0 ? totals.clicks / totals.impressions : null
   const compareCtr = compareTotals.impressions > 0 ? compareTotals.clicks / compareTotals.impressions : null
   const totalCpc = totals.clicks > 0 ? totals.spend / totals.clicks : null
@@ -2005,12 +2428,23 @@ export default function AdsPageClient() {
       clicks: kpiTrendData.map((row) => ({ value: row.clicks })),
       platformLeads: kpiTrendData.map((row) => ({ value: row.platformLeads })),
       crmRequests: kpiTrendData.map((row) => ({ value: row.crmRequests })),
+      contracts: kpiTrendData.map((row) => ({ value: row.contracts })),
+      revenue: kpiTrendData.map((row) => ({ value: row.revenue })),
+      payments: kpiTrendData.map((row) => ({ value: row.payments })),
       impressions: kpiTrendData.map((row) => ({ value: row.impressions })),
       roas: kpiTrendData.map((row) => {
         if (!row.spend) return { value: null }
-        const base = row.conversionValue > 0 ? row.conversionValue : row.platformLeads
+        const base = row.revenue > 0 ? row.revenue : row.conversionValue > 0 ? row.conversionValue : row.platformLeads
         return { value: base / row.spend }
       }),
+      cac: kpiTrendData.map((row) => ({ value: row.contracts ? row.spend / row.contracts : null })),
+      payback: kpiTrendData.map((row) => ({ value: row.revenue ? row.payments / row.revenue : null })),
+      linkRate: kpiTrendData.map((row) => ({
+        value: row.platformLeads ? row.crmRequests / row.platformLeads : null,
+      })),
+      requestToContractRate: kpiTrendData.map((row) => ({
+        value: row.crmRequests ? row.contracts / row.crmRequests : null,
+      })),
       ctr: kpiTrendData.map((row) => ({ value: row.impressions ? row.clicks / row.impressions : null })),
       cpa: kpiTrendData.map((row) => ({ value: row.platformLeads ? row.spend / row.platformLeads : null })),
       cpc: kpiTrendData.map((row) => ({ value: row.clicks ? row.spend / row.clicks : null })),
@@ -2039,12 +2473,103 @@ export default function AdsPageClient() {
     const warnings: string[] = []
     if (kpiMissing) warnings.push("KPI view missing — using daily aggregates.")
     if (!hasCrmLeadsData) warnings.push("CRM leads attribution is not linked.")
+    if (hasCrmLeadsData && !hasCrmOutcomesData) warnings.push("CRM outcomes (contracts/payments/revenue) are missing.")
     if (conversionsMissing && gadsConversionsTotal > 0) {
       warnings.push("GAds conversions exist, but conversion actions dim is missing.")
     }
     if (creativeTypesMissing) warnings.push("Creative type summary not available.")
     return warnings
-  }, [creativeTypesMissing, conversionsMissing, gadsConversionsTotal, hasCrmLeadsData, kpiMissing])
+  }, [creativeTypesMissing, conversionsMissing, gadsConversionsTotal, hasCrmLeadsData, hasCrmOutcomesData, kpiMissing])
+
+  const ga4TrafficSummary = useMemo(() => {
+    type Ga4TrafficSummary = {
+      sessions: number
+      users: number
+      engagedSessions: number
+      conversions: number
+      revenue: number
+    }
+
+    return ga4TrafficRows.reduce<Ga4TrafficSummary>(
+      (acc, row) => {
+        const sessions = metricNumber(row, ["sessions", "session_cnt", "session_count"]) ?? 0
+        const users = metricNumber(row, ["total_users", "active_users", "activeUsers"]) ?? 0
+        const engaged = metricNumber(row, ["engaged_sessions", "engagedSessions"]) ?? 0
+        const conversions = metricNumber(row, ["conversions", "conversion_cnt"]) ?? 0
+        const revenue = metricNumber(row, ["purchase_revenue", "revenue"]) ?? 0
+        acc.sessions += sessions
+        acc.users += users
+        acc.engagedSessions += engaged
+        acc.conversions += conversions
+        acc.revenue += revenue
+        return acc
+      },
+      { sessions: 0, users: 0, engagedSessions: 0, conversions: 0, revenue: 0 }
+    )
+  }, [ga4TrafficRows])
+
+  const ga4EngagementRate = ga4TrafficSummary.sessions > 0
+    ? ga4TrafficSummary.engagedSessions / ga4TrafficSummary.sessions
+    : null
+
+  const ga4EventsTop = useMemo(() => {
+    return ga4EventsRows
+      .map((row) => ({
+        eventName: String(pickRowValue(row, ["event_name", "event"]) ?? "Event"),
+        platform: String(pickRowValue(row, ["platform"]) ?? ""),
+        channelGroup: String(pickRowValue(row, ["channel_group"]) ?? ""),
+        conversions: metricNumber(row, ["conversions", "conversion_cnt"]) ?? 0,
+        revenue: metricNumber(row, ["purchase_revenue", "revenue"]) ?? 0,
+      }))
+      .sort((a, b) => b.conversions - a.conversions)
+  }, [ga4EventsRows])
+
+  const ga4MetaEvents = useMemo(() => {
+    return ga4EventsTop
+      .filter((row) => normalizeGa4Platform(row.platform) === "meta")
+      .slice(0, 8)
+  }, [ga4EventsTop])
+
+  const ga4GadsEvents = useMemo(() => {
+    return ga4EventsTop
+      .filter((row) => normalizeGa4Platform(row.platform) === "gads")
+      .slice(0, 8)
+  }, [ga4EventsTop])
+
+  const ga4CreativeTop = useMemo(() => {
+    return ga4CreativeRows
+      .map((row) => {
+        const campaignName = String(pickRowValue(row, ["campaign_name"]) ?? "Campaign")
+        const adGroupName = String(pickRowValue(row, ["ad_group_name"]) ?? "Ad group")
+        const creativeId = String(pickRowValue(row, ["creative_id"]) ?? "Creative")
+        const campaignType = String(pickRowValue(row, ["campaign_type"]) ?? "—")
+        const networkType = String(pickRowValue(row, ["ad_network_type"]) ?? "—")
+        const impressions = metricNumber(row, ["impressions"]) ?? 0
+        const clicks = metricNumber(row, ["clicks"]) ?? 0
+        const spend = metricNumber(row, ["spend"]) ?? 0
+        const users = metricNumber(row, ["total_users"]) ?? 0
+        const revenue = metricNumber(row, ["revenue", "purchase_revenue"]) ?? 0
+        return {
+          campaignName,
+          adGroupName,
+          creativeId,
+          campaignType,
+          networkType,
+          impressions,
+          clicks,
+          spend,
+          users,
+          revenue,
+          ctr: impressions > 0 ? clicks / impressions : null,
+          roas: spend > 0 ? revenue / spend : null,
+          isPmax: isGa4PmaxRow(row),
+        }
+      })
+      .sort((a, b) => b.spend - a.spend)
+  }, [ga4CreativeRows])
+
+  const ga4PmaxCreativeTop = useMemo(() => ga4CreativeTop.filter((row) => row.isPmax).slice(0, 8), [ga4CreativeTop])
+  const ga4SearchCreativeTop = useMemo(() => ga4CreativeTop.filter((row) => !row.isPmax).slice(0, 8), [ga4CreativeTop])
 
   const metaCreativeBase = creativeRows.length > 0 ? creativeRows : metaCreativeRows
   const metaCreativeFiltered = useMemo(() => {
@@ -2180,6 +2705,14 @@ export default function AdsPageClient() {
     return Array.from(bucket.values())
   }, [metaCreativeFiltered])
 
+  const creativePreviewMap = useMemo(() => {
+    const map = new Map<string, CreativePreviewEntry>()
+    metaCreativeBase.forEach((row) => {
+      upsertCreativePreview(map, row as CreativePreviewSource)
+    })
+    return map
+  }, [metaCreativeBase])
+
   const placementSummary = useMemo(() => {
     const bucket = new Map<
       string,
@@ -2225,6 +2758,7 @@ export default function AdsPageClient() {
           "creative"
       )
       const existing = bucket.get(key)
+      const previewFallback = resolveCreativePreview(creativePreviewMap, row as CreativePreviewSource)
       const spend = (toNumber(existing?.spend) ?? 0) + (toNumber(row.spend) ?? 0)
       const clicks = (toNumber(existing?.clicks) ?? 0) + (toNumber(row.clicks) ?? 0)
       const impressions = (toNumber(existing?.impressions) ?? 0) + (toNumber(row.impressions) ?? 0)
@@ -2240,19 +2774,23 @@ export default function AdsPageClient() {
         leads_cnt: leads,
         contracts_cnt: contracts,
         revenue_sum: revenue,
-        creative_title: existing?.creative_title ?? row.creative_title,
+        creative_title: existing?.creative_title ?? row.creative_title ?? previewFallback?.creativeTitle,
         creative_type: existing?.creative_type ?? row.creative_type,
         product_name: existing?.product_name ?? row.product_name,
         product_group: existing?.product_group ?? row.product_group,
-        preview_image_url: existing?.preview_image_url ?? row.preview_image_url ?? row.thumbnail_url,
-        permalink_url: existing?.permalink_url ?? row.permalink_url,
+        preview_image_url:
+          existing?.preview_image_url ??
+          row.preview_image_url ??
+          row.thumbnail_url ??
+          previewFallback?.previewImageUrl,
+        permalink_url: existing?.permalink_url ?? row.permalink_url ?? previewFallback?.permalinkUrl,
         campaign_name: existing?.campaign_name ?? row.campaign_name,
         adset_name: existing?.adset_name ?? row.adset_name,
         ad_name: existing?.ad_name ?? row.ad_name,
       })
     })
     return Array.from(bucket.values())
-  }, [creativeDetailedRows])
+  }, [creativeDetailedRows, creativePreviewMap])
 
   const topCreatives = useMemo(() => {
     const baseSource = creativeDetailedAggregated.length > 0 ? creativeDetailedAggregated : metaCreativeAggregated
@@ -2316,6 +2854,7 @@ export default function AdsPageClient() {
           "ad"
       )
       const existing = bucket.get(key)
+      const previewFallback = resolveCreativePreview(creativePreviewMap, row as CreativePreviewSource)
       const spend = (toNumber(existing?.spend) ?? 0) + (toNumber(row.spend) ?? 0)
       const fbLeads = (toNumber(existing?.fb_leads) ?? 0) + (toNumber(row.fb_leads) ?? 0)
       const crmLeads = (toNumber(existing?.crm_requests_cnt) ?? 0) + (toNumber(row.crm_requests_cnt) ?? 0)
@@ -2330,18 +2869,26 @@ export default function AdsPageClient() {
         contracts_cnt: contracts,
         paid_sum: paidSum,
         ad_name: existing?.ad_name ?? row.ad_name,
-        creative_title: existing?.creative_title ?? row.creative_title,
+        creative_title: existing?.creative_title ?? row.creative_title ?? previewFallback?.creativeTitle,
         creative_body: existing?.creative_body ?? row.creative_body,
         preview_image_url:
-          existing?.preview_image_url ?? row.preview_image_url ?? row.thumbnail_url ?? row.media_image_src,
-        permalink_url: existing?.permalink_url ?? row.permalink_url ?? row.link_url,
+          existing?.preview_image_url ??
+          row.preview_image_url ??
+          row.thumbnail_url ??
+          row.media_image_src ??
+          previewFallback?.previewImageUrl,
+        permalink_url:
+          existing?.permalink_url ??
+          row.permalink_url ??
+          row.link_url ??
+          previewFallback?.permalinkUrl,
         link_url: existing?.link_url ?? row.link_url,
         campaign_name: existing?.campaign_name ?? row.campaign_name,
         adset_name: existing?.adset_name ?? row.adset_name,
       })
     })
     return Array.from(bucket.values())
-  }, [metaAdsTopRows])
+  }, [metaAdsTopRows, creativePreviewMap])
 
   const topMetaResultRows = useMemo(() => {
     const filtered = metaAdsTopAggregated.filter((row) => {
@@ -2566,6 +3113,76 @@ export default function AdsPageClient() {
     return Array.from(bucket.values()).sort((a, b) => b.spend - a.spend).slice(0, 8)
   }, [gadsSpendRows])
 
+  const gadsCampaignPreviewSummary = useMemo(() => {
+    const bucket = new Map<
+      string,
+      {
+        campaignId: string | number | null
+        campaignName: string
+        channelType?: string | null
+        creativeTitle?: string | null
+        previewImageUrl?: string | null
+        hasPreview?: boolean
+        spend: number
+        clicks: number
+        impressions: number
+        conversions: number
+        conversionsValue: number
+      }
+    >()
+    gadsCampaignPreviewRows.forEach((row) => {
+      const campaignId = row.campaign_id ?? null
+      const name = normalizeLabel(row.campaign_name) ?? (campaignId != null ? `Campaign #${campaignId}` : "Campaign")
+      const key = String(campaignId ?? name)
+      const entry =
+        bucket.get(key) ?? {
+          campaignId,
+          campaignName: name,
+          channelType: row.advertising_channel_type ?? null,
+          creativeTitle: null,
+          previewImageUrl: null,
+          hasPreview: row.has_preview !== false,
+          spend: 0,
+          clicks: 0,
+          impressions: 0,
+          conversions: 0,
+          conversionsValue: 0,
+        }
+      entry.spend += toNumber(row.spend) ?? 0
+      entry.clicks += toNumber(row.clicks) ?? 0
+      entry.impressions += toNumber(row.impressions) ?? 0
+      entry.conversions += toNumber(row.conversions) ?? 0
+      entry.conversionsValue += toNumber(row.conversions_value) ?? 0
+      if (!entry.previewImageUrl && row.preview_image_url) {
+        entry.previewImageUrl = row.preview_image_url
+      }
+      if (row.has_preview === false) {
+        entry.hasPreview = false
+      } else if (entry.hasPreview == null) {
+        entry.hasPreview = Boolean(row.preview_image_url)
+      }
+      if (!entry.creativeTitle && row.creative_title) {
+        entry.creativeTitle = row.creative_title
+      }
+      bucket.set(key, entry)
+    })
+    return Array.from(bucket.values()).sort((a, b) => b.spend - a.spend).slice(0, 8)
+  }, [gadsCampaignPreviewRows])
+
+  const gadsCampaignPreviewMap = useMemo(() => {
+    const map = new Map<string, { previewImageUrl: string | null; creativeTitle: string | null; hasPreview: boolean }>()
+    gadsCampaignPreviewRows.forEach((row) => {
+      const key = String(row.campaign_id ?? row.campaign_name ?? "")
+      if (!key) return
+      const entry = map.get(key) ?? { previewImageUrl: null, creativeTitle: null, hasPreview: row.has_preview !== false }
+      if (!entry.previewImageUrl && row.preview_image_url) entry.previewImageUrl = row.preview_image_url
+      if (!entry.creativeTitle && row.creative_title) entry.creativeTitle = row.creative_title
+      if (row.has_preview === false) entry.hasPreview = false
+      map.set(key, entry)
+    })
+    return map
+  }, [gadsCampaignPreviewRows])
+
   const gadsDemandSummary = useMemo(() => {
     const bucket = new Map<
       string,
@@ -2761,7 +3378,6 @@ export default function AdsPageClient() {
   const insightsWidgetKey = useMemo(() => {
     if (activeTab === "meta") return "ads.meta_ads_top_daily"
     if (activeTab === "gads") return "ads.gads_pmax_daily"
-    if (activeTab === "creatives") return "ads.meta_creative_fatigue_7d"
     if (activeTab === "pmax") return "ads.gads_pmax_daily"
     return "ads.kpi_total"
   }, [activeTab])
@@ -2912,9 +3528,8 @@ export default function AdsPageClient() {
           setDateError(null)
         }}
         onCityChange={(value) => setDraftFilters((prev) => ({ ...prev, cityId: value }))}
-        onPlatformChange={(value) => setDraftFilters((prev) => ({ ...prev, platform: value }))}
         showCity
-        showPlatform={false}
+        allowAllCities={false}
         compact
         extraControls={
           <div className="flex flex-wrap items-center gap-2">
@@ -2929,7 +3544,7 @@ export default function AdsPageClient() {
               </SelectContent>
             </Select>
             {compareMode !== "none" && !compareParams && (
-              <span className="text-xs text-muted-foreground">Оберіть період, щоб порівняти.</span>
+              <span className="text-xs text-muted-foreground">Select a date range to compare.</span>
             )}
           </div>
         }
@@ -2941,6 +3556,10 @@ export default function AdsPageClient() {
           isLoadingCreatives ||
           isLoadingMetaCreatives ||
           isLoadingChannelMix ||
+          isLoadingSummaryExtras ||
+          isLoadingMetaExtras ||
+          isLoadingCreativeExtras ||
+          isLoadingGadsTopKeywords ||
           isLoadingGadsSpend ||
           isLoadingGadsKeywordsDaily ||
           isLoadingGadsDevices ||
@@ -2953,11 +3572,10 @@ export default function AdsPageClient() {
       />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-        <TabsList className="grid w-full max-w-[720px] grid-cols-5">
+        <TabsList className="grid w-full max-w-[720px] grid-cols-4">
           <TabsTrigger value={TAB_SUMMARY}>Summary</TabsTrigger>
           <TabsTrigger value={TAB_META}>Meta</TabsTrigger>
           <TabsTrigger value={TAB_GADS}>Google Ads</TabsTrigger>
-          <TabsTrigger value={TAB_CREATIVES}>Creatives</TabsTrigger>
           <TabsTrigger value={TAB_PMAX}>PMax</TabsTrigger>
         </TabsList>
 
@@ -3017,7 +3635,7 @@ export default function AdsPageClient() {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-10 gap-3">
             {[
               {
                 label: "Spend",
@@ -3026,14 +3644,6 @@ export default function AdsPageClient() {
                 prev: showCompareDelta ? compareTotals.spend : null,
                 format: (v: number | null) => formatMoney(v ?? null),
                 sparkline: kpiSparklines.spend,
-              },
-              {
-                label: "Clicks",
-                badges: ["Total", "Platform"],
-                current: totals.clicks,
-                prev: showCompareDelta ? compareTotals.clicks : null,
-                format: (v: number | null) => formatNumber(v ?? null),
-                sparkline: kpiSparklines.clicks,
               },
               {
                 label: "Leads (platform)",
@@ -3048,7 +3658,7 @@ export default function AdsPageClient() {
                 sparkline: kpiSparklines.platformLeads,
               },
               {
-                label: "CRM leads",
+                label: "CRM requests",
                 badges: ["Total", "CRM"],
                 note: hasCrmLeadsData ? null : "Attribution not linked",
                 current: hasCrmLeadsData ? totals.crmRequests : null,
@@ -3057,13 +3667,78 @@ export default function AdsPageClient() {
                 sparkline: kpiSparklines.crmRequests,
               },
               {
+                label: "Contracts",
+                badges: ["Total", "CRM"],
+                note: hasCrmOutcomesData ? null : "CRM outcomes missing",
+                current: hasCrmOutcomesData ? totals.contracts : null,
+                prev: null,
+                format: (v: number | null) => formatNumber(v ?? null),
+                sparkline: kpiSparklines.contracts,
+              },
+              {
+                label: "Revenue",
+                badges: ["Total", "CRM"],
+                note: hasCrmOutcomesData ? null : "CRM outcomes missing",
+                current: hasCrmOutcomesData ? totals.revenue : null,
+                prev: null,
+                format: (v: number | null) => formatMoney(v ?? null),
+                sparkline: kpiSparklines.revenue,
+              },
+              {
+                label: "Payments",
+                badges: ["Total", "CRM"],
+                note: hasCrmOutcomesData ? null : "CRM outcomes missing",
+                current: hasCrmOutcomesData ? totals.payments : null,
+                prev: null,
+                format: (v: number | null) => formatMoney(v ?? null),
+                sparkline: kpiSparklines.payments,
+              },
+              {
                 label: "ROAS (CRM)",
                 badges: ["CRM", "Total"],
-                current: dailyRoas,
-                prev: showCompareDelta ? compareRoas : null,
+                note: hasCrmOutcomesData ? null : "CRM outcomes missing",
+                current: hasCrmOutcomesData ? dailyRoas : null,
+                prev: null,
                 format: (v: number | null) =>
                   formatNumber(v ?? null, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 sparkline: kpiSparklines.roas,
+              },
+              {
+                label: "CAC (CRM)",
+                badges: ["CRM", "Total"],
+                note: hasCrmOutcomesData ? null : "CRM outcomes missing",
+                current: hasCrmOutcomesData && totals.contracts > 0 ? totals.spend / totals.contracts : null,
+                prev: null,
+                format: (v: number | null) => formatMoney(v ?? null),
+                sparkline: kpiSparklines.cac,
+              },
+              {
+                label: "Payback",
+                badges: ["CRM", "Total"],
+                note: hasCrmOutcomesData ? null : "CRM outcomes missing",
+                current: hasCrmOutcomesData && totals.revenue > 0 ? totals.payments / totals.revenue : null,
+                prev: null,
+                format: (v: number | null) => formatPercent(v ?? null),
+                sparkline: kpiSparklines.payback,
+              },
+              {
+                label: "Link rate",
+                badges: ["Quality"],
+                note: hasCrmLeadsData ? null : "Attribution not linked",
+                current: hasCrmLeadsData && totals.platformLeads > 0 ? totals.crmRequests / totals.platformLeads : null,
+                prev: null,
+                format: (v: number | null) => formatPercent(v ?? null),
+                sparkline: kpiSparklines.linkRate,
+              },
+              {
+                label: "Req → Contract",
+                badges: ["Quality"],
+                note: hasCrmOutcomesData ? null : "CRM outcomes missing",
+                current:
+                  hasCrmOutcomesData && totals.crmRequests > 0 ? totals.contracts / totals.crmRequests : null,
+                prev: null,
+                format: (v: number | null) => formatPercent(v ?? null),
+                sparkline: kpiSparklines.requestToContractRate,
               },
             ].map((metric) => {
               const delta = showCompareDelta ? calcDelta(metric.current, metric.prev) : { delta: null, deltaPct: null }
@@ -3199,7 +3874,7 @@ export default function AdsPageClient() {
           <div className="rounded-xl border border-border/60 p-4">
             <div>
               <div className="text-sm font-semibold">KPI trend</div>
-              <div className="text-xs text-muted-foreground">Spend and conversions by day.</div>
+              <div className="text-xs text-muted-foreground">Spend + funnel (platform leads → CRM requests → contracts).</div>
             </div>
             {kpiTrendData.length < 2 ? (
               <div className="mt-3">
@@ -3210,7 +3885,7 @@ export default function AdsPageClient() {
               </div>
             ) : (
               <div className="mt-3 h-[240px]">
-                <ResponsiveContainer>
+                <SafeResponsiveContainer>
                   <ComposedChart data={kpiTrendData} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
                     <defs>
                       <linearGradient id="adsSpendFill" x1="0" y1="0" x2="0" y2="1">
@@ -3233,19 +3908,25 @@ export default function AdsPageClient() {
                       label={{ value: "Leads", angle: 90, position: "insideRight", offset: 12 }}
                       {...chartAxisProps}
                     />
-                    <Tooltip
-                      contentStyle={chartTooltipStyle}
-                      itemStyle={chartTooltipItemStyle}
-                      formatter={(value: number, name: string) => {
-                        if (name === "spend") return [formatMoney(value), "Spend"]
-                        if (name === "platformLeads") return [formatNumber(value), "Leads (platform)"]
-                        return [formatNumber(value), name]
-                      }}
-                    />
+	                    <Tooltip
+	                      contentStyle={chartTooltipStyle}
+	                      itemStyle={chartTooltipItemStyle}
+	                      formatter={(value, name) => {
+	                        const label = String(name)
+	                        if (value === null || value === undefined) return ["—", label]
+	                        const numeric = typeof value === "number" ? value : Number(value)
+	                        if (label === "spend") return [formatMoney(numeric), "Spend"]
+	                        if (label === "platformLeads") return [formatNumber(numeric), "Leads (platform)"]
+	                        if (label === "crmRequests") return [formatNumber(numeric), "CRM requests"]
+	                        if (label === "contracts") return [formatNumber(numeric), "Contracts"]
+	                        return [formatNumber(numeric), label]
+	                      }}
+	                    />
                     <Legend verticalAlign="top" height={28} />
                     <Area
                       type="monotone"
                       dataKey="spend"
+                      name="Spend"
                       stroke={CHART_COLORS.primary}
                       fill="url(#adsSpendFill)"
                       strokeWidth={2}
@@ -3255,13 +3936,32 @@ export default function AdsPageClient() {
                     <Line
                       type="monotone"
                       dataKey="platformLeads"
+                      name="Leads (platform)"
                       stroke={CHART_COLORS.secondary}
                       strokeWidth={2}
                       dot={false}
                       yAxisId="right"
                     />
+                    <Line
+                      type="monotone"
+                      dataKey="crmRequests"
+                      name="CRM requests"
+                      stroke={CHART_COLORS.tertiary}
+                      strokeWidth={2}
+                      dot={false}
+                      yAxisId="right"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="contracts"
+                      name="Contracts"
+                      stroke={CHART_COLORS.quaternary}
+                      strokeWidth={2}
+                      dot={false}
+                      yAxisId="right"
+                    />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </SafeResponsiveContainer>
               </div>
             )}
           </div>
@@ -3392,6 +4092,74 @@ export default function AdsPageClient() {
             />
           )}
 
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>GA4 Quality Snapshot</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {ga4TrafficRows.length > 0 || ga4EventsTop.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+                    <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="text-xs text-muted-foreground">Sessions</div>
+                      <div className="mt-1 text-base font-semibold">{formatNumber(ga4TrafficSummary.sessions)}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="text-xs text-muted-foreground">Users</div>
+                      <div className="mt-1 text-base font-semibold">{formatNumber(ga4TrafficSummary.users)}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="text-xs text-muted-foreground">Engagement</div>
+                      <div className="mt-1 text-base font-semibold">{formatPercent(ga4EngagementRate)}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="text-xs text-muted-foreground">Conversions</div>
+                      <div className="mt-1 text-base font-semibold">{formatNumber(ga4TrafficSummary.conversions)}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="text-xs text-muted-foreground">GA4 Revenue</div>
+                      <div className="mt-1 text-base font-semibold">{formatMoney(ga4TrafficSummary.revenue)}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="text-xs text-muted-foreground">Events</div>
+                      <div className="mt-1 text-base font-semibold">{formatNumber(ga4EventsTop.length)}</div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {ga4EventsTop.slice(0, 6).map((row, index) => (
+                      <div key={`${row.eventName}-${index}`} className="rounded-xl border border-border/60 bg-card/40 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="truncate text-sm font-semibold">{row.eventName}</div>
+                          {row.platform ? <Badge variant="outline">{row.platform}</Badge> : null}
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                          <div>
+                            <div>Conversions</div>
+                            <div className="text-sm font-semibold text-foreground">{formatNumber(row.conversions)}</div>
+                          </div>
+                          <div>
+                            <div>Revenue</div>
+                            <div className="text-sm font-semibold text-foreground">{formatMoney(row.revenue)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : adsSummaryMissing.ga4_traffic || adsSummaryMissing.ga4_events ? (
+                <WidgetStatus
+                  title="GA4 widgets unavailable"
+                  description="ga4.traffic_overview_daily / ga4.events_conversions_daily недоступны."
+                />
+              ) : (
+                <WidgetStatus
+                  title="GA4 data is empty"
+                  description="За выбранный период нет прикладных GA4 событий для рекламы."
+                />
+              )}
+            </CardContent>
+          </Card>
+
           {isLoadingAnomalies ? (
             <div className="grid grid-cols-1 gap-3">
               {[...Array(3)].map((_, index) => (
@@ -3490,7 +4258,7 @@ export default function AdsPageClient() {
           )}
         </TabsContent>
 
-        <TabsContent value={TAB_META} className="space-y-4">
+        <TabsContent value={TAB_CREATIVES} className="space-y-4">
           {isLoadingDaily || isLoadingKpi ? (
             <Skeleton className="h-32 w-full" />
           ) : (
@@ -3832,9 +4600,309 @@ export default function AdsPageClient() {
               </CardContent>
             </Card>
           ) : null}
+
+          {isDebug ? (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Meta CRM signals (ads)</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Funnel</div>
+                    {adsMetaMissing.funnel ? (
+                      <WidgetStatus title="Нет витрины funnel" description="ads.meta_funnel_daily не подключена." />
+                    ) : (
+                      <WidgetTable
+                        rows={adsMetaFunnelRows}
+                        emptyLabel={isLoadingMetaExtras ? "Loading..." : "Нет данных funnel."}
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Leads daily</div>
+                    {adsMetaMissing.leads ? (
+                      <WidgetStatus title="Нет витрины leads" description="ads.meta_leads_daily не подключена." />
+                    ) : (
+                      <WidgetTable
+                        rows={adsMetaLeadsRows}
+                        emptyLabel={isLoadingMetaExtras ? "Loading..." : "Нет данных leads."}
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Data quality</div>
+                    {adsMetaMissing.quality ? (
+                      <WidgetStatus title="Нет витрины data quality" description="ads.meta_data_quality_daily не подключена." />
+                    ) : (
+                      <WidgetTable
+                        rows={adsMetaQualityRows}
+                        emptyLabel={isLoadingMetaExtras ? "Loading..." : "Нет данных по качеству."}
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Leads match quality</div>
+                    {adsMetaMissing.match ? (
+                      <WidgetStatus title="Нет витрины match quality" description="ads.meta_leads_match_quality_daily не подключена." />
+                    ) : (
+                      <WidgetTable
+                        rows={adsMetaMatchRows}
+                        emptyLabel={isLoadingMetaExtras ? "Loading..." : "Нет данных match quality."}
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">CPL by form</div>
+                    {adsMetaMissing.cpl_by_form ? (
+                      <WidgetStatus title="Нет витрины CPL by form" description="ads.meta_cpl_by_form_daily не подключена." />
+                    ) : (
+                      <WidgetTable
+                        rows={adsMetaCplByFormRows}
+                        emptyLabel={isLoadingMetaExtras ? "Loading..." : "Нет данных CPL by form."}
+                      />
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Meta raw signals</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Creatives</div>
+                    {metaRawMissing.creatives ? (
+                      <WidgetStatus title="Нет витрины creatives" description="meta.creatives_daily не подключена." />
+                    ) : (
+                      <WidgetTable rows={metaRawCreativesRows} emptyLabel="Нет данных creatives." />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Data quality</div>
+                    {metaRawMissing.quality ? (
+                      <WidgetStatus title="Нет витрины data quality" description="meta.data_quality_daily не подключена." />
+                    ) : (
+                      <WidgetTable rows={metaRawDataQualityRows} emptyLabel="Нет данных по качеству." />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Funnel</div>
+                    {metaRawMissing.funnel ? (
+                      <WidgetStatus title="Нет витрины funnel" description="meta.funnel_daily не подключена." />
+                    ) : (
+                      <WidgetTable rows={metaRawFunnelRows} emptyLabel="Нет данных funnel." />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Lead → CRM bridge</div>
+                    {metaRawMissing.bridge ? (
+                      <WidgetStatus title="Нет витрины bridge" description="meta.lead_to_crm_bridge не подключена." />
+                    ) : (
+                      <WidgetTable rows={metaRawBridgeRows} emptyLabel="Нет данных bridge." />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Leads match quality</div>
+                    {metaRawMissing.match ? (
+                      <WidgetStatus title="Нет витрины match" description="meta.leads_match_quality_daily не подключена." />
+                    ) : (
+                      <WidgetTable rows={metaRawMatchRows} emptyLabel="Нет данных по match quality." />
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : null}
         </TabsContent>
 
-        <TabsContent value={TAB_CREATIVES} className="space-y-4">
+        <TabsContent value={TAB_META} className="space-y-4">
+          {isLoadingDaily || isLoadingKpi ? (
+            <Skeleton className="h-32 w-full" />
+          ) : (
+            <TabKpiStrip title="Meta KPI" />
+          )}
+
+          {isLoadingMetaAdsTop || isLoadingDaily ? (
+            <div className="grid grid-cols-1 gap-3">
+              {[...Array(4)].map((_, index) => (
+                <Skeleton key={index} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : topMetaAdsRows.length > 0 ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle>Top Meta ads</CardTitle>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <WidgetMiniFilters widgetKey="ads.meta_ads_top_daily" />
+                    <Badge variant="secondary">{topMetaAdsRows.length}</Badge>
+                    {topMetaAdsRows.length > 6 && (
+                      <Button size="sm" variant="outline" onClick={() => setShowAllTopMeta((prev) => !prev)}>
+                        {showAllTopMeta ? "Collapse" : "Show all"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                {(showAllTopMeta ? topMetaAdsRows : topMetaAdsRows.slice(0, 6)).map((row, index) => {
+                  const adName = normalizeLabel(row.ad_name ?? null)
+                  const creativeTitle = normalizeLabel(row.creative_title ?? row.creative_body ?? adName ?? null)
+                  const label = buildEntityLabel(creativeTitle, row.ad_id ?? null, "Ad")
+                  const campaignName = normalizeLabel(row.campaign_name ?? row.adset_name ?? null)
+                  const campaignLabel =
+                    campaignName ??
+                    (row.campaign_id != null ? `Campaign #${row.campaign_id}` : null) ??
+                    (row.adset_id != null ? `Adset #${row.adset_id}` : null) ??
+                    "Campaign"
+                  const spend = toNumber(row.spend) ?? 0
+                  const leads = toNumber(row.fb_leads) ?? 0
+                  const crmLeads = toNumber(row.crm_requests_cnt)
+                  const contracts = toNumber(row.contracts_cnt) ?? 0
+                  const paidSum = toNumber(row.paid_sum)
+                  const cpl = row.cpl != null ? toNumber(row.cpl) : leads > 0 ? spend / leads : null
+                  const cpa = row.cpa != null ? toNumber(row.cpa) : contracts > 0 ? spend / contracts : null
+                  const roas =
+                    row.roas_paid != null
+                      ? toNumber(row.roas_paid)
+                      : paidSum != null && spend > 0
+                        ? paidSum / spend
+                        : null
+                  const previewUrl = row.preview_image_url ?? row.thumbnail_url ?? row.media_image_src ?? null
+                  const previewLink = row.permalink_url ?? row.link_url ?? null
+                  const fallbackUrl = buildAdsLibraryUrl(row.ad_id ?? null)
+                  const openUrl = previewLink ?? fallbackUrl
+                  return (
+                    <div
+                      key={`${row.ad_id ?? label.title}-${index}`}
+                      className="rounded-2xl border border-border/60 bg-card/40 p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <PreviewImage src={previewUrl} alt={label.title} href={openUrl} fallbackUrl={fallbackUrl} />
+                          <div>
+                            <div className="text-sm font-semibold">{label.title}</div>
+                            <div className="text-xs text-muted-foreground">Campaign: {campaignLabel}</div>
+                          </div>
+                        </div>
+                        {renderPlatformBadge("meta")}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <Badge variant="secondary">CPL {cpl == null ? "—" : formatMoney(cpl)}</Badge>
+                        <Badge variant="secondary">CPA {cpa == null ? "—" : formatMoney(cpa)}</Badge>
+                        <Badge variant="secondary">
+                          ROAS{" "}
+                          {roas == null
+                            ? "—"
+                            : formatNumber(roas, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Spend</div>
+                          <div className="font-semibold">{formatMoney(spend)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">
+                            {crmLeads != null ? "CRM leads" : "Platform leads"}
+                          </div>
+                          <div className="font-semibold">{formatNumber(crmLeads ?? leads)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Contracts</div>
+                          <div className="font-semibold">{formatNumber(contracts)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Paid sum</div>
+                          <div className="font-semibold">{formatMoney(paidSum)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          ) : metaAdsTopMissing ? (
+            <AnalyticsEmptyState
+              title="Немає Meta оголошень"
+              description="Перевірте SEM витрину meta_ads_top_daily."
+              context="ads"
+              size="sm"
+            />
+          ) : (
+            <AnalyticsEmptyState
+              title="Немає Meta оголошень"
+              description="Перевірте Meta підключення або вибраний період."
+              context="ads"
+              size="sm"
+            />
+          )}
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>GA4 Meta Events</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {ga4MetaEvents.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {ga4MetaEvents.map((row, index) => (
+                    <div key={`${row.eventName}-${index}`} className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold">{row.eventName}</div>
+                        <Badge variant="outline">GA4</Badge>
+                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {row.channelGroup || "—"}
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Conversions</div>
+                          <div className="font-semibold">{formatNumber(row.conversions)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Revenue</div>
+                          <div className="font-semibold">{formatMoney(row.revenue)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <WidgetStatus
+                  title="Meta GA4 events not found"
+                  description="GA4 события Meta не найдены в выбранном периоде."
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          {false && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Creatives diagnostics</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-sm font-semibold">Performance daily</div>
+                {adsCreativeMissing.performance ? (
+                  <WidgetStatus title="Нет витрины performance" description="ads.creative_performance_daily не подключена." />
+                ) : (
+                  <WidgetTable rows={adsCreativePerformanceRows} emptyLabel={isLoadingCreativeExtras ? "Loading..." : "Нет данных performance."} />
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-semibold">Fatigue daily</div>
+                {adsCreativeMissing.fatigue ? (
+                  <WidgetStatus title="Нет витрины fatigue" description="ads.creative_fatigue_daily не подключена." />
+                ) : (
+                  <WidgetTable rows={adsCreativeFatigueRows} emptyLabel={isLoadingCreativeExtras ? "Loading..." : "Нет данных fatigue."} />
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          )}
 
           {isLoadingMetaFatigue ? (
             <div className="grid grid-cols-1 gap-3">
@@ -4345,6 +5413,70 @@ export default function AdsPageClient() {
             <TabKpiStrip title="Google Ads KPI" />
           )}
 
+          {isLoadingGadsCampaignPreviews ? (
+            <Skeleton className="h-40 w-full" />
+          ) : gadsCampaignPreviewsMissing ? (
+            <WidgetStatus
+              title="Нет витрины campaign previews"
+              description="ads.gads_campaign_previews_daily не подключена."
+            />
+          ) : gadsCampaignPreviewSummary.length > 0 ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Campaign previews</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                {gadsCampaignPreviewSummary.map((row) => {
+                  const ctr = row.impressions > 0 ? row.clicks / row.impressions : null
+                  const cpc = row.clicks > 0 ? row.spend / row.clicks : null
+                  const cpa = row.conversions > 0 ? row.spend / row.conversions : null
+                  return (
+                    <div key={row.campaignId ?? row.campaignName} className="rounded-xl border border-border bg-card/40 p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="h-16 w-24 overflow-hidden rounded-lg bg-muted/60 flex items-center justify-center">
+                          <CampaignPreviewThumb src={row.previewImageUrl} hasPreview={row.hasPreview} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold truncate">{row.campaignName}</div>
+                            {renderPlatformBadge("gads")}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                            <Badge variant="secondary">CTR {ctr == null ? "—" : formatPercent(ctr)}</Badge>
+                            <Badge variant="secondary">CPC {cpc == null ? "—" : formatMoney(cpc)}</Badge>
+                            <Badge variant="secondary">CPA {cpa == null ? "—" : formatMoney(cpa)}</Badge>
+                            {row.channelType && <Badge variant="outline">{normalizeLabel(row.channelType)}</Badge>}
+                          </div>
+                          {row.creativeTitle && (
+                            <div className="mt-2 text-xs text-muted-foreground truncate">Creative: {row.creativeTitle}</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Spend</div>
+                          <div className="font-semibold">{formatMoney(row.spend)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Clicks</div>
+                          <div className="font-semibold">{formatNumber(row.clicks)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Conversions</div>
+                          <div className="font-semibold">{formatNumber(row.conversions)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Impressions</div>
+                          <div className="font-semibold">{formatNumber(row.impressions)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {gadsCampaignSummary.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
@@ -4355,16 +5487,27 @@ export default function AdsPageClient() {
                   const ctr = row.impressions > 0 ? row.clicks / row.impressions : null
                   const cpc = row.clicks > 0 ? row.spend / row.clicks : null
                   const cpa = row.conversions > 0 ? row.spend / row.conversions : null
+                  const preview = gadsCampaignPreviewMap.get(String(row.campaignId ?? row.campaignName))
                   return (
                     <div key={row.campaignName} className="rounded-xl border border-border bg-card/40 p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-semibold">{row.campaignName}</div>
-                        {renderPlatformBadge("gads")}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        <Badge variant="secondary">CTR {ctr == null ? "—" : formatPercent(ctr)}</Badge>
-                        <Badge variant="secondary">CPC {cpc == null ? "—" : formatMoney(cpc)}</Badge>
-                        <Badge variant="secondary">CPA {cpa == null ? "—" : formatMoney(cpa)}</Badge>
+                      <div className="flex items-start gap-3">
+                        <div className="h-16 w-24 overflow-hidden rounded-lg bg-muted/60 flex items-center justify-center">
+                          <CampaignPreviewThumb src={preview?.previewImageUrl} hasPreview={preview?.hasPreview} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold truncate">{row.campaignName}</div>
+                            {renderPlatformBadge("gads")}
+                          </div>
+                          {preview?.creativeTitle && (
+                            <div className="mt-1 text-xs text-muted-foreground truncate">Creative: {preview.creativeTitle}</div>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                            <Badge variant="secondary">CTR {ctr == null ? "—" : formatPercent(ctr)}</Badge>
+                            <Badge variant="secondary">CPC {cpc == null ? "—" : formatMoney(cpc)}</Badge>
+                            <Badge variant="secondary">CPA {cpa == null ? "—" : formatMoney(cpa)}</Badge>
+                          </div>
+                        </div>
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                         <div>
@@ -4390,6 +5533,44 @@ export default function AdsPageClient() {
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>GA4 Google Events</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {ga4GadsEvents.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {ga4GadsEvents.map((row, index) => (
+                    <div key={`${row.eventName}-${index}`} className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold">{row.eventName}</div>
+                        <Badge variant="outline">GA4</Badge>
+                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {row.channelGroup || "—"}
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Conversions</div>
+                          <div className="font-semibold">{formatNumber(row.conversions)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Revenue</div>
+                          <div className="font-semibold">{formatMoney(row.revenue)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <WidgetStatus
+                  title="Google GA4 events not found"
+                  description="GA4 события Google Ads не найдены в выбранном периоде."
+                />
+              )}
+            </CardContent>
+          </Card>
 
           {isLoadingGadsRequests || isLoadingGadsLeads ? (
             <div className="grid grid-cols-1 gap-3">
@@ -4564,6 +5745,22 @@ export default function AdsPageClient() {
               size="sm"
             />
           )}
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Top keywords (ads)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {adsGadsMissing.top_keywords ? (
+                <WidgetStatus title="Нет витрины top keywords" description="ads.gads.top_keywords не подключена." />
+              ) : (
+                <WidgetTable
+                  rows={adsGadsTopKeywordsRows}
+                  emptyLabel={isLoadingGadsTopKeywords ? "Loading..." : "Нет данных top keywords."}
+                />
+              )}
+            </CardContent>
+          </Card>
 
           {isLoadingGadsDevices ? (
             <div className="grid grid-cols-1 gap-3">
@@ -4789,6 +5986,48 @@ export default function AdsPageClient() {
               size="sm"
             />
           )}
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>GA4 Campaign Touchpoints</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {ga4SearchCreativeTop.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {ga4SearchCreativeTop.map((row, index) => (
+                    <div key={`${row.creativeId}-${index}`} className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold">{row.campaignName}</div>
+                        <Badge variant="outline">{row.campaignType}</Badge>
+                      </div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">
+                        {row.adGroupName} · {row.creativeId}
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Spend</div>
+                          <div className="font-semibold">{formatMoney(row.spend)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Users</div>
+                          <div className="font-semibold">{formatNumber(row.users)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">CTR</div>
+                          <div className="font-semibold">{row.ctr == null ? "—" : formatPercent(row.ctr)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <WidgetStatus
+                  title="GA4 campaign touchpoints not found"
+                  description="GA4 ads_creative_performance_daily не вернул строк для Google Ads."
+                />
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value={TAB_PMAX} className="space-y-4">
@@ -4875,6 +6114,50 @@ export default function AdsPageClient() {
               size="sm"
             />
           )}
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>GA4 PMax Touchpoints</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {ga4PmaxCreativeTop.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {ga4PmaxCreativeTop.map((row, index) => (
+                    <div key={`${row.creativeId}-${index}`} className="rounded-xl border border-border/60 bg-card/40 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-sm font-semibold">{row.campaignName}</div>
+                        <Badge variant="outline">{row.networkType}</Badge>
+                      </div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">
+                        {row.adGroupName} · {row.creativeId}
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Spend</div>
+                          <div className="font-semibold">{formatMoney(row.spend)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Users</div>
+                          <div className="font-semibold">{formatNumber(row.users)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">ROAS</div>
+                          <div className="font-semibold">
+                            {row.roas == null ? "—" : formatNumber(row.roas, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <WidgetStatus
+                  title="GA4 PMax rows not found"
+                  description="GA4 ads_creative_performance_daily не вернул строк по Performance Max."
+                />
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

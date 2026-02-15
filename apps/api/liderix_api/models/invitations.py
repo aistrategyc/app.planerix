@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import (
     Column,
@@ -12,7 +11,6 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
     ForeignKey,
-    Boolean,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship, validates

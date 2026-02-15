@@ -2,15 +2,9 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import {
-  TasksAPI, Task, TaskUpdate, TaskPriority, TaskType, TaskStatus, getTaskStatusOptions
-} from "@/lib/api/tasks"
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Tabs, TabsContent, TabsList, TabsTrigger,
-} from "@/components/ui/tabs"
+import { TasksAPI, Task, TaskUpdate, TaskPriority, TaskType, TaskStatus, getTaskStatusOptions } from "@/lib/api/tasks"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -29,7 +23,19 @@ interface TaskDetailDialogProps {
   projects: Array<{ id: string; name: string }>
 }
 
-type TaskComment = Record<string, unknown>
+type TaskCommentUser = {
+  username?: string
+  email?: string
+  [k: string]: unknown
+}
+
+type TaskComment = {
+  id: string
+  content: string
+  created_at?: string
+  user?: TaskCommentUser
+  [k: string]: unknown
+}
 
 export function TaskDetailDialog({
   task,
@@ -76,7 +82,7 @@ export function TaskDetailDialog({
         setCommentLoading(true)
         const data = await TasksAPI.getTaskComments(task.id)
         const items = Array.isArray(data) ? data : data?.items ?? []
-        setComments(items)
+        setComments(items as TaskComment[])
       } catch {
         toast({ title: "Error", description: "Failed to load comments", variant: "destructive" })
       } finally {
@@ -107,7 +113,7 @@ export function TaskDetailDialog({
     if (!task || !newComment.trim()) return
     try {
       const created = await TasksAPI.addTaskComment(task.id, newComment.trim())
-      setComments((prev) => [created, ...prev])
+      setComments((prev) => [created as TaskComment, ...prev])
       setNewComment("")
     } catch {
       toast({ title: "Error", description: "Failed to add comment", variant: "destructive" })
@@ -355,7 +361,7 @@ export function TaskDetailDialog({
                       {comment.user?.username || comment.user?.email || "User"}
                     </div>
                     <div className="text-sm text-muted-foreground">{comment.content}</div>
-                    {comment.created_at && (
+                    {typeof comment.created_at === "string" && comment.created_at && (
                       <div className="text-xs text-muted-foreground mt-1">
                         {new Date(comment.created_at).toLocaleString()}
                       </div>

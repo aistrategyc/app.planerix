@@ -4,10 +4,10 @@ export const CHART_COLORS = {
   tertiary: "var(--chart-3)",
   quaternary: "var(--chart-4)",
   quinary: "var(--chart-5)",
-  muted: "hsl(var(--muted-foreground))",
-  grid: "hsl(var(--border))",
-  background: "hsl(var(--background))",
-  foreground: "hsl(var(--foreground))",
+  muted: "var(--muted-foreground)",
+  grid: "var(--border)",
+  background: "var(--background)",
+  foreground: "var(--foreground)",
 }
 
 export const chartAxisProps = {

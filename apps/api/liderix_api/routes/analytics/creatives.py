@@ -4,8 +4,7 @@ Legacy dm/dashboards sources were removed in favor of sem views.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
-from typing import Optional
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text

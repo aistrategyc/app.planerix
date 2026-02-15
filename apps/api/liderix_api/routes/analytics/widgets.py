@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time as dt_time
-from typing import Dict, Optional, Tuple, Iterable
+from typing import Dict, Optional, Tuple
 import uuid
 
 import time
@@ -66,6 +66,14 @@ _WIDGET_META_OVERRIDES: Dict[str, dict] = {
             "clicks": {"unit": "count", "aggregation": "total", "source": "platform"},
             "platform_leads": {"unit": "count", "aggregation": "total", "source": "platform", "is_fractional_allowed": True},
             "crm_requests_cnt": {"unit": "count", "aggregation": "total", "source": "crm"},
+            # Full-funnel CRM outcomes for end-to-end analytics.
+            "contracts_cnt": {"unit": "count", "aggregation": "total", "source": "crm"},
+            "revenue_sum": {"unit": "money", "aggregation": "total", "source": "crm"},
+            "payments_sum": {"unit": "money", "aggregation": "total", "source": "crm"},
+            # Derived KPI columns (usually computed in sem_ui view).
+            "cac": {"unit": "money", "aggregation": "ratio", "source": "derived"},
+            "roas": {"unit": "ratio", "aggregation": "ratio", "source": "derived"},
+            "payback_rate": {"unit": "ratio", "aggregation": "ratio", "source": "derived"},
         },
     },
     "ads.ads_daily": {**_DEFAULT_MONEY_META},
@@ -564,6 +572,11 @@ async def get_widget_data(
         id_city = city_id
     if id_city is None:
         id_city = default_filters.get("id_city") or default_filters.get("city_id")
+    # Treat sentinel defaults like "all"/"" as "no filter" to avoid 400s
+    # during first render (e.g. attribution pages before city default is applied).
+    if isinstance(id_city, str):
+        if not id_city.strip() or id_city.strip().lower() == "all":
+            id_city = None
     city_column = None
     if config.city_column and config.city_column in columns:
         city_column = config.city_column
@@ -935,6 +948,35 @@ async def get_widget_data(
     has_more = len(rows) > limit_value
     if has_more:
         rows = rows[:limit_value]
+    items = [dict(row) for row in rows]
+
+    city_supported = _supports_filter(config, "city")
+    city_output_column = None
+    if city_supported:
+        if config.city_column and config.city_column in columns:
+            city_output_column = config.city_column
+        elif "city_id" in columns:
+            city_output_column = "city_id"
+        elif "id_city" in columns:
+            city_output_column = "id_city"
+
+    if city_output_column and items:
+        fallback_city = (
+            params.get("id_city")
+            or default_filters.get("id_city")
+            or default_filters.get("city_id")
+            or 4
+        )
+        fallback_city = _parse_column_value(fallback_city, columns.get(city_output_column))
+        for item in items:
+            city_value = item.get(city_output_column)
+            if city_value is None:
+                city_value = fallback_city
+                item[city_output_column] = city_value
+            # Unified response contract for attribution/pages expecting city_id.
+            if "city_id" not in item:
+                item["city_id"] = city_value
+
     meta: dict = {
         "widget_key": widget_key,
         "sem_view": config.view,
@@ -957,7 +999,7 @@ async def get_widget_data(
 
     return {
         "widget_key": widget_key,
-        "items": [dict(row) for row in rows],
+        "items": items,
         "has_more": has_more,
         "applied_filters": applied_filters,
         "ignored_filters": ignored_filters,

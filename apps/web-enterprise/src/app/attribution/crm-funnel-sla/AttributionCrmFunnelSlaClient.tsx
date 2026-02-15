@@ -2,15 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AttributionFilterBar } from "@/app/attribution/components/AttributionFilterBar"
 import { useAttributionFilters } from "@/app/attribution/hooks/useAttributionFilters"
@@ -187,9 +179,6 @@ export default function AttributionCrmFunnelSlaClient() {
     }
     if (appliedFilters.cityId !== "all") {
       params.id_city = appliedFilters.cityId
-    }
-    if (appliedFilters.platform !== "all") {
-      params.platform = appliedFilters.platform
     }
     if (appliedFilters.channel !== "all") {
       params.channel = appliedFilters.channel

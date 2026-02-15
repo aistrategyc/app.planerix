@@ -244,9 +244,14 @@ export default function OnboardingForm({
         }
         // Если это объект с описанием
         else if (errorData.detail) {
-          errorMessage = typeof errorData.detail === 'string' 
-            ? errorData.detail 
-            : errorData.detail.title || errorData.detail.detail || errorMessage
+          if (typeof errorData.detail === "string") {
+            errorMessage = errorData.detail
+          } else if (typeof errorData.detail === "object" && errorData.detail !== null) {
+            const detailObj = errorData.detail as Record<string, unknown>
+            const title = typeof detailObj.title === "string" ? detailObj.title : undefined
+            const detail = typeof detailObj.detail === "string" ? detailObj.detail : undefined
+            errorMessage = title || detail || errorMessage
+          }
         }
         // Проверяем статус код
         else if (error.response?.status === 409) {

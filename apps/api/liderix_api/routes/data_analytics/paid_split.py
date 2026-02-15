@@ -5,7 +5,6 @@ Analyzes paid advertising vs organic traffic
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
 from datetime import date
 
 from liderix_api.db import get_itstep_session

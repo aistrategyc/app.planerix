@@ -18,7 +18,7 @@ from ..services.dependencies import get_current_user
 router = APIRouter(prefix="/marketing-campaigns", tags=["marketing-campaigns"])
 
 
-@router.get("", response_model=List[CampaignRead])
+@router.get("", response_model=List[CampaignRead], deprecated=True)
 async def get_campaigns(
     date_from: date = Query(default=None, description="Start date for filtering campaigns"),
     date_to: date = Query(default=None, description="End date for filtering campaigns"),
@@ -140,7 +140,7 @@ async def get_campaigns(
     return campaigns
 
 
-@router.get("/stats", response_model=CampaignStatsResponse)
+@router.get("/stats", response_model=CampaignStatsResponse, deprecated=True)
 async def get_campaign_stats(
     date_from: date = Query(default=None, description="Start date for statistics"),
     date_to: date = Query(default=None, description="End date for statistics"),

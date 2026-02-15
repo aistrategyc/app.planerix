@@ -199,19 +199,13 @@ export function buildQueryParams(params: Record<string, unknown>): string {
 // =============================
 
 export function isPaginatedResponse<T>(data: unknown): data is PaginatedResponse<T> {
-  return (
-    data &&
-    typeof data === 'object' &&
-    'items' in data &&
-    Array.isArray(data.items) &&
-    typeof data.total === 'number'
-  );
+  if (!data || typeof data !== "object") return false
+  const obj = data as Record<string, unknown>
+  return Array.isArray(obj.items) && typeof obj.total === "number"
 }
 
 export function isErrorResponse(data: unknown): data is ErrorResponse {
-  return (
-    data &&
-    typeof data === 'object' &&
-    ('detail' in data || 'message' in data)
-  );
+  if (!data || typeof data !== "object") return false
+  const obj = data as Record<string, unknown>
+  return "detail" in obj || "message" in obj
 }

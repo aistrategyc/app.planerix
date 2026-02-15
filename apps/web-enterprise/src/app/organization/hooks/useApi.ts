@@ -51,6 +51,10 @@ interface N8NWorkflowProvisionPayload {
   name?: string;
 }
 
+interface N8NWorkflowProvisionResponse {
+  workflow_url?: string;
+}
+
 // ------------------------------
 // Low-level request helper
 // ------------------------------
@@ -206,7 +210,7 @@ export function useOrganizationApi() {
   }, []);
 
   const provisionN8nWorkflow = useCallback(async (payload: N8NWorkflowProvisionPayload) => {
-    return apiRequest("/integrations/n8n/provision", { method: "POST", body: payload });
+    return apiRequest<N8NWorkflowProvisionResponse>("/integrations/n8n/provision", { method: "POST", body: payload });
   }, []);
 
   return {

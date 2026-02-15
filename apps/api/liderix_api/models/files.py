@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import List
 
 from sqlalchemy import (
     Column,
@@ -19,7 +18,6 @@ from sqlalchemy import (
     Integer,
     Boolean,
     Float,
-    UniqueConstraint,
     CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB

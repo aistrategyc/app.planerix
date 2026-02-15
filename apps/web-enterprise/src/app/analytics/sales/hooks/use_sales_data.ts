@@ -48,7 +48,15 @@ interface SalesData {
   byUtm: UtmRow[]
 }
 
-export function useSalesData(dateRange?: { from?: Date; to?: Date }) {
+type UseSalesDataOptions = {
+  enabled?: boolean
+}
+
+export function useSalesData(
+  dateRange?: { from?: Date; to?: Date },
+  options: UseSalesDataOptions = {}
+) {
+  const enabled = options.enabled ?? true
   const [data, setData] = useState<SalesData>({
     daily: [],
     weekly: [],
@@ -59,12 +67,16 @@ export function useSalesData(dateRange?: { from?: Date; to?: Date }) {
   const [isLoading, setIsLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
+    if (!enabled) {
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     const startDate = dateRange?.from ? dateRange.from.toISOString().slice(0, 10) : undefined
     const endDate = dateRange?.to ? dateRange.to.toISOString().slice(0, 10) : undefined
 
     try {
-      const [dailyRes, utmRes, productsRes] = await Promise.all([
+      const [dailyRes, utmRes, productsRes, branchesRes] = await Promise.all([
         startDate && endDate
           ? api.get("/analytics/sales/revenue-trend", { params: { start_date: startDate, end_date: endDate } })
           : Promise.resolve({ data: { data: [] } }),
@@ -74,14 +86,17 @@ export function useSalesData(dateRange?: { from?: Date; to?: Date }) {
         startDate && endDate
           ? api.get("/analytics/sales/v6/products/performance", { params: { date_from: startDate, date_to: endDate } })
           : Promise.resolve({ data: [] }),
+        startDate && endDate
+          ? api.get("/analytics/sales/v6/branches/performance", { params: { date_from: startDate, date_to: endDate } })
+          : Promise.resolve({ data: [] }),
       ])
 
       const dailyRows = Array.isArray(dailyRes.data?.data) ? dailyRes.data.data : []
-      const daily = dailyRows.map((item: any) => ({
+      const daily: SalesDaily[] = dailyRows.map((item: any) => ({
         date: item.date,
         contract_count: item.contracts ?? 0,
         total_revenue: item.revenue ?? 0,
-        total_first_sum: item.first_sum ?? 0,
+        total_first_sum: item.first_sum ?? item.total_first_sum ?? 0,
       }))
 
       const getWeekStart = (dateString: string) => {
@@ -116,7 +131,7 @@ export function useSalesData(dateRange?: { from?: Date; to?: Date }) {
             utm_campaign: item.utm_campaign ?? "",
             contract_count: item.n_contracts ?? 0,
             total_revenue: item.revenue ?? 0,
-            total_first_sum: 0,
+            total_first_sum: item.avg_first_sum ?? item.first_sum ?? item.total_first_sum ?? 0,
           }))
         : []
 
@@ -126,7 +141,17 @@ export function useSalesData(dateRange?: { from?: Date; to?: Date }) {
             service_name: item.product_name ?? "Unknown",
             contract_count: item.contracts ?? 0,
             total_revenue: item.revenue ?? 0,
-            total_first_sum: item.avg_value ?? 0,
+            total_first_sum: item.avg_first_sum ?? item.first_sum ?? item.total_first_sum ?? item.avg_value ?? 0,
+          }))
+        : []
+
+      const byBranch = Array.isArray(branchesRes.data)
+        ? branchesRes.data.map((item: any) => ({
+            branch_sk: item.branch_sk ?? item.id_city ?? 0,
+            branch_name: item.branch_name ?? item.city_name ?? "Unknown",
+            contract_count: item.contracts ?? item.contract_count ?? 0,
+            total_revenue: item.revenue ?? item.total_revenue ?? 0,
+            total_first_sum: item.avg_first_sum ?? item.first_sum ?? item.total_first_sum ?? 0,
           }))
         : []
 
@@ -134,7 +159,7 @@ export function useSalesData(dateRange?: { from?: Date; to?: Date }) {
         daily,
         weekly: mappedWeekly,
         byService,
-        byBranch: [],
+        byBranch,
         byUtm,
       })
     } catch (error) {
@@ -149,7 +174,7 @@ export function useSalesData(dateRange?: { from?: Date; to?: Date }) {
     } finally {
       setIsLoading(false)
     }
-  }, [dateRange?.from?.toISOString(), dateRange?.to?.toISOString()])
+  }, [enabled, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()])
 
   useEffect(() => {
     fetchData()

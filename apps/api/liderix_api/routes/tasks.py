@@ -21,7 +21,7 @@ from liderix_api.models.project_members import ProjectMember
 from liderix_api.models.memberships import Membership, MembershipStatus
 from liderix_api.models.users import User
 from liderix_api.schemas.tasks import (
-    TaskRead, TaskCreate, TaskUpdate, TaskListResponse,
+    TaskCreate, TaskUpdate, TaskListResponse,
     TaskDetailResponse, TaskCommentCreate, TaskStatusUpdate,
     TaskAssignmentUpdate, TaskStatsResponse, TaskCommentResponse,
     TaskWatcherAdd, TaskWatcherRead,
@@ -129,7 +129,7 @@ async def _validate_task_participants(session: AsyncSession, org_id: UUID, user_
             and_(
                 User.id.in_(user_ids),
                 User.deleted_at.is_(None),
-                User.is_active == True
+                User.is_active.is_(True)
             )
         )
     )
@@ -290,7 +290,7 @@ async def list_tasks(
             .where(
                 and_(
                     Project.org_id.in_(user_org_ids),
-                    Project.is_public == True,
+                    Project.is_public.is_(True),
                     Project.deleted_at.is_(None),
                 )
             )

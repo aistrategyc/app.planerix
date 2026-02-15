@@ -1,7 +1,6 @@
-"use client"
-
 import CRMPageClient from "@/app/analytics/crm/CRMPageClient"
+import { FEATURE_FLAGS } from "@/lib/featureFlags"
 
 export default function AnalyticsPage() {
-  return <CRMPageClient />
+  return <CRMPageClient showCrmRawWidgets={FEATURE_FLAGS.analyticsShowCrmRawWidgets} />
 }

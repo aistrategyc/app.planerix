@@ -11,39 +11,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import {
-  Plus,
-  CheckSquare,
-  Clock,
-  AlertTriangle,
-  Search,
-  Loader2,
-  Eye,
-  Star,
-  PlayCircle,
-  XCircle,
-  Trash2,
-  Calendar,
-  History
-} from "lucide-react"
+import { Plus, CheckSquare, Clock, AlertTriangle, Search, Loader2, Eye, Star, PlayCircle, XCircle, Trash2, Calendar, History } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { useTasks, useUsers, useProjects } from "@/app/tasks/hooks/useTasks"
-import {
-  TasksAPI,
-  TaskStatus,
-  TaskPriority,
-  TaskType,
-  TaskCreate,
-  Task,
-  TaskUpdate,
-  TaskFilters,
-  TaskParticipant,
-  TaskParticipantRole,
-  TaskApproval,
-  TaskApprovalStatus,
-  canTransitionTaskStatus,
-  getTaskStatusOptions
-} from "@/lib/api/tasks"
+import { TasksAPI, TaskStatus, TaskPriority, TaskType, TaskCreate, Task, TaskUpdate, TaskFilters, TaskParticipant, TaskParticipantRole, TaskApproval, TaskApprovalStatus, canTransitionTaskStatus, getTaskStatusOptions } from "@/lib/api/tasks"
 import ProtectedRoute from "@/components/auth/ProtectedRoute"
 import { AnalyticsEmptyState } from "@/components/analytics/AnalyticsEmptyState"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -51,15 +22,7 @@ import { PageLoader } from "@/components/ui/loading-spinner"
 import { useAuth } from "@/contexts/auth-context"
 import { type MembershipRole, isReadOnlyRole } from "@/types/roles"
 import { PageHeader } from "@/components/layout/PageHeader"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface NewTaskForm extends TaskCreate {
@@ -303,10 +266,10 @@ function TasksPageContent() {
     const loadCounts = async () => {
       try {
         const [allTasks, assignedTasks, createdTasks, watchingTasks] = await Promise.all([
-          TasksAPI.getTasks({ ...baseFilters, page_size: 200 }),
-          TasksAPI.getTasks({ ...baseFilters, assignee_id: currentUserId, page_size: 200 }),
-          TasksAPI.getTasks({ ...baseFilters, creator_id: currentUserId, page_size: 200 }),
-          TasksAPI.getTasks({ ...baseFilters, watcher_id: currentUserId, page_size: 200 }),
+          TasksAPI.getTasks({ ...baseFilters, per_page: 200 }),
+          TasksAPI.getTasks({ ...baseFilters, assignee_id: currentUserId, per_page: 200 }),
+          TasksAPI.getTasks({ ...baseFilters, creator_id: currentUserId, per_page: 200 }),
+          TasksAPI.getTasks({ ...baseFilters, watcher_id: currentUserId, per_page: 200 }),
         ])
         if (!active) return
         const myIds = new Set([...assignedTasks, ...createdTasks].map((task) => task.id))

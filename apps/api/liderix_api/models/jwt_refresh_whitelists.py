@@ -1,8 +1,6 @@
 # apps/api/liderix_api/models/jwt_refresh_whitelists.py
 from __future__ import annotations
 
-import uuid
-from datetime import datetime
 
 from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB

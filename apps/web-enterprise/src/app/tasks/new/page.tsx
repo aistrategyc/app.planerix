@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import Link from "next/link"
-import { TasksAPI } from "@/lib/api/tasks"
+import { TasksAPI, TaskPriority, TaskType } from "@/lib/api/tasks"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -59,6 +59,8 @@ export default function NewTaskPage() {
     try {
       const task = await TasksAPI.createTask({
         ...data,
+        priority: data.priority as unknown as TaskPriority,
+        task_type: data.task_type as unknown as TaskType,
         estimated_hours: data.estimated_hours ? parseFloat(data.estimated_hours) : undefined,
         story_points: data.story_points ? parseInt(data.story_points) : undefined,
       })

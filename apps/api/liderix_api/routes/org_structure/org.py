@@ -12,7 +12,7 @@ from liderix_api.schemas.organization import OrganizationCreate, OrganizationUpd
 from liderix_api.services.guards import tenant_guard, TenantContext, require_perm
 from liderix_api.services.auth import get_current_user
 from liderix_api.models.users import User
-from liderix_api.models.memberships import Membership, MembershipRole, MembershipStatus
+from liderix_api.models.memberships import Membership, MembershipStatus
 from liderix_api.services.audit import AuditLogger
 from liderix_api.services.tenants import bootstrap_org
 from datetime import datetime, timezone
@@ -434,7 +434,7 @@ async def delete_organization(
 # Дополнительные полезные эндпоинты
 
 @router.get("/{org_id}/slug-available", response_model=dict)
-async def check_slug_availability(
+async def check_slug_availability_for_org(
     org_id: UUID,
     slug: str,
     ctx: TenantContext = Depends(tenant_guard),

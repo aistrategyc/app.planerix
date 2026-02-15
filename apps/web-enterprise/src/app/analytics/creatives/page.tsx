@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { fetchWidgetRange, fetchWidgetsBatch, WidgetRow } from "@/lib/api/analytics-widgets"
+import { fetchWidgetRange, fetchWidgetsBatch, WidgetRangeResponse, WidgetRow } from "@/lib/api/analytics-widgets"
 import { InsightsPanel } from "@/app/analytics/components/InsightsPanel"
 import { AnalyticsEmptyState } from "@/components/analytics/AnalyticsEmptyState"
 import { useAuth } from "@/contexts/auth-context"
@@ -154,7 +154,7 @@ const resolveFatigueStatus = (delta: number | null) => {
   return { label: "Stable", variant: "outline" as const }
 }
 
-const collectKeys = (...values: Array<string | number | null | undefined>) => {
+const collectKeys = (...values: unknown[]) => {
   const keys = new Set<string>()
   values.forEach((value) => {
     if (value == null || value === "") return
@@ -218,7 +218,7 @@ export default function CreativesPage() {
   const [contractRows, setContractRows] = useState<WidgetRow[]>([])
   const [contractAllTimeRows, setContractAllTimeRows] = useState<WidgetRow[]>([])
   const [contractsMissing, setContractsMissing] = useState(false)
-  const [contractsRange, setContractsRange] = useState<{ min: string | null; max: string | null } | null>(null)
+  const [contractsRange, setContractsRange] = useState<WidgetRangeResponse | null>(null)
   const [fatigueRows, setFatigueRows] = useState<WidgetRow[]>([])
   const [fatigueMissing, setFatigueMissing] = useState(false)
 
@@ -601,9 +601,11 @@ export default function CreativesPage() {
       const shouldFetchFatigue = shouldFetchContracts
       const contractsRangeValue =
         contractsRange ??
-        (shouldFetchContracts ? await fetchWidgetRange("contracts.meta_by_ad_daily") : { min_date: null, max_date: null })
+        (shouldFetchContracts
+          ? await fetchWidgetRange("contracts.meta_by_ad_daily")
+          : { widget_key: "contracts.meta_by_ad_daily", min_date: null, max_date: null })
       if (!contractsRange && shouldFetchContracts) {
-        setContractsRange({ min: contractsRangeValue.min_date, max: contractsRangeValue.max_date })
+        setContractsRange(contractsRangeValue)
       }
       const widgetPayload = [
         { widget_key: "creatives.type_cards" },
@@ -872,11 +874,12 @@ export default function CreativesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {fatigueHighlights.map(({ row, delta }, index) => {
-                    const creativeId = row.creative_id ?? row.ad_id ?? row.creative_key ?? index
-                    const title = resolveCreativeTitle(row, creativeId)
-                    const status = resolveFatigueStatus(delta)
-                    return (
+	                  {fatigueHighlights.map(({ row, delta }, index) => {
+	                    const creativeIdRaw = row.creative_id ?? row.ad_id ?? row.creative_key ?? index
+	                    const creativeId = typeof creativeIdRaw === "number" ? creativeIdRaw : String(creativeIdRaw)
+	                    const title = resolveCreativeTitle(row, creativeId)
+	                    const status = resolveFatigueStatus(delta)
+	                    return (
                       <tr key={`${creativeId}-${index}`} className="border-t border-border">
                         <td className="px-3 py-2">
                           <div className="max-w-[280px] line-clamp-2">{title}</div>
@@ -933,12 +936,13 @@ export default function CreativesPage() {
             />
           ) : (
             <>
-              {(showAllCreatives ? filteredCreatives : filteredCreatives.slice(0, 8)).map((row, index) => {
-                const idLabel = row.creative_id ?? row.creative_key ?? row.ad_id ?? index + 1
-                const title = resolveCreativeTitle(row, idLabel)
-                const formatLabel = normalizeFormatLabel(
-                  (row.creative_format as string | null) ?? (row.object_type as string | null)
-                )
+	              {(showAllCreatives ? filteredCreatives : filteredCreatives.slice(0, 8)).map((row, index) => {
+	                const idRaw = row.creative_id ?? row.creative_key ?? row.ad_id ?? index + 1
+	                const idLabel = typeof idRaw === "number" ? idRaw : String(idRaw)
+	                const title = resolveCreativeTitle(row, idLabel)
+	                const formatLabel = normalizeFormatLabel(
+	                  (row.creative_format as string | null) ?? (row.object_type as string | null)
+	                )
                 const sourceLabel = normalizeLabel(
                   (row.creative_source as string | null) ?? (row.source as string | null),
                   resolvePlatformLabel(row.platform as string | null)
@@ -1002,13 +1006,17 @@ export default function CreativesPage() {
                       <div className="flex items-start justify-between gap-2">
                         <CardTitle className="text-base line-clamp-2">{title}</CardTitle>
                       </div>
-                      {(row.campaign_name || row.adset_name || row.ad_name) && (
-                        <div className="space-y-0.5 text-xs text-muted-foreground">
-                          {row.campaign_name && <div className="line-clamp-1">Campaign: {row.campaign_name}</div>}
-                          {row.adset_name && <div className="line-clamp-1">Adset: {row.adset_name}</div>}
-                          {row.ad_name && <div className="line-clamp-1">Ad: {row.ad_name}</div>}
-                        </div>
-                      )}
+	                      {Boolean(row.campaign_name || row.adset_name || row.ad_name) && (
+	                        <div className="space-y-0.5 text-xs text-muted-foreground">
+	                          {Boolean(row.campaign_name) && (
+	                            <div className="line-clamp-1">Campaign: {String(row.campaign_name)}</div>
+	                          )}
+	                          {Boolean(row.adset_name) && (
+	                            <div className="line-clamp-1">Adset: {String(row.adset_name)}</div>
+	                          )}
+	                          {Boolean(row.ad_name) && <div className="line-clamp-1">Ad: {String(row.ad_name)}</div>}
+	                        </div>
+	                      )}
                       <div className="flex flex-wrap gap-2">
                         {resolvePlatformBadge(row.platform as string | null)}
                         <Badge variant="secondary" className="text-xs">

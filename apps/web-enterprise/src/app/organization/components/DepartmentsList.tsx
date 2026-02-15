@@ -3,12 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { 
-  Users,
-  MoreHorizontal,
-  Briefcase,
-  Plus
-} from "lucide-react";
+import { Users, MoreHorizontal, Briefcase, Plus } from "lucide-react";
 import { CreateDepartmentDialog } from "./CreateDepartmentDialog";
 import type { Department, Member } from "../hooks/useOrganization";
 

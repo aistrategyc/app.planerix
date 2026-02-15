@@ -541,7 +541,7 @@ export function useOrganizationAnalytics(orgId: string, timeRange = '30d') {
       setLoading(true);
       setError(null);
       
-      const data = await api.getAnalytics(orgId, timeRange);
+      const data = (await api.getAnalytics(orgId, timeRange)) as OrganizationAnalytics;
       setAnalytics(data);
     } catch (err: unknown) {
       const errorMessage = getErrorMessage(err, 'Не удалось загрузить аналитику');
