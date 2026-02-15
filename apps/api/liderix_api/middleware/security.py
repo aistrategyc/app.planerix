@@ -136,6 +136,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "/auth/login",
             "/auth/register",
             "/auth/verify",
+            "/auth/verify-email",
             "/auth/resend-verification",
             "/auth/password-reset",
             "/auth/refresh",     # ✅ ключевой фикс твоей ошибки
@@ -355,7 +356,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             return
 
         try:
-            if path in {"/auth/login", "/auth/verify"} and status_code in (401, 403):
+            if path in {"/auth/login", "/auth/verify", "/auth/verify-email"} and status_code in (401, 403):
                 key = f"auth_failures:{client_ip}"
                 fails = await self.redis.incr(key)
                 if fails == 1:
